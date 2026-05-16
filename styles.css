@@ -66,6 +66,67 @@ button:disabled {
   padding: 10px 12px 12px;
 }
 
+.room-panel {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) repeat(3, minmax(130px, 190px)) auto;
+  gap: 10px;
+  align-items: end;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(6, 9, 13, 0.9);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
+.room-panel > div:first-child {
+  display: grid;
+  gap: 3px;
+  align-self: center;
+}
+
+.room-panel strong {
+  font-size: 15px;
+}
+
+.room-panel span,
+.room-panel label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.room-panel label {
+  display: grid;
+  gap: 4px;
+}
+
+.room-panel input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+  font: inherit;
+}
+
+.room-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.room-actions button {
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
 .table-area {
   position: relative;
   display: grid;
@@ -854,6 +915,21 @@ h1 {
 
   .table-area {
     grid-template-rows: auto auto auto;
+    padding-bottom: 188px;
+  }
+
+  .room-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .room-panel > div:first-child,
+  .room-panel label:nth-of-type(3),
+  .room-actions {
+    grid-column: span 2;
+  }
+
+  .room-actions button {
+    flex: 1;
   }
 
   .poker-table {

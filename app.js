@@ -2,6 +2,11 @@ const suits = ["♠", "♥", "♣", "♦"];
 const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 
 const state = {
+  online: false,
+  apiBase: localStorage.getItem("apiBase") || "",
+  roomCode: localStorage.getItem("roomCode") || "",
+  playerId: localStorage.getItem("playerId") || "",
+  pollTimer: null,
   round: 1,
   deck: [],
   used: [],
@@ -54,7 +59,17 @@ const els = {
   hitBtn: document.querySelector("#hitBtn"),
   standBtn: document.querySelector("#standBtn"),
   revealBtn: document.querySelector("#revealBtn"),
+  roomPanel: document.querySelector("#roomPanel"),
+  connectionState: document.querySelector("#connectionState"),
+  nicknameInput: document.querySelector("#nicknameInput"),
+  roomCodeInput: document.querySelector("#roomCodeInput"),
+  apiBaseInput: document.querySelector("#apiBaseInput"),
+  createRoomBtn: document.querySelector("#createRoomBtn"),
+  joinRoomBtn: document.querySelector("#joinRoomBtn"),
 };
+
+els.apiBaseInput.value = state.apiBase;
+els.roomCodeInput.value = state.roomCode;
 
 function createDeck() {
   return suits.flatMap((suit) =>
@@ -117,6 +132,9 @@ function isBust(cards) {
 }
 
 function currentPlayer() {
+  if (state.currentTurnPlayerId) {
+    return state.players.find((player) => player.id === state.currentTurnPlayerId);
+  }
   const idlePlayers = state.players.filter((player) => !player.isDealer);
   return idlePlayers[state.activePlayerIndex] || idlePlayers[0];
 }
@@ -126,6 +144,10 @@ function dealer() {
 }
 
 function resetRound() {
+  if (state.online) {
+    sendAction("start_round");
+    return;
+  }
   state.players.forEach((player) => {
     player.hands.forEach((hand) => {
       state.used.push(...hand.cards);
@@ -169,6 +191,10 @@ function showToast(message) {
 }
 
 function hit() {
+  if (state.online) {
+    sendAction("hit");
+    return;
+  }
   const player = currentPlayer();
   const hand = player.hands[0];
   if (!hand || hand.stood || hand.busted) return;
@@ -197,6 +223,10 @@ function hit() {
 }
 
 function stand() {
+  if (state.online) {
+    sendAction("stand");
+    return;
+  }
   const player = currentPlayer();
   const hand = player.hands[0];
   if (handScore(hand.cards) <= 13) {
@@ -271,6 +301,10 @@ function compareHands(playerCards, dealerCards) {
 }
 
 function revealDealer() {
+  if (state.online) {
+    sendAction("reveal_dealer");
+    return;
+  }
   state.dealerRevealed = true;
   addLog("庄家亮牌。");
   render(false, true);
@@ -287,20 +321,32 @@ function render(animateCards = false, flipDealer = false) {
     .map((player) => renderSeat(player, false, animateCards, false))
     .join("");
 
-  const isViewerTurn = currentPlayer()?.id === state.viewerId && !state.dealerRevealed;
-  els.deckCount.textContent = `牌库 ${state.deck.length}`;
-  els.discardCount.textContent = `已用 ${state.used.length}`;
-  els.roundLabel.textContent = `第 ${state.round} 局 · ${state.dealerRevealed ? "庄家回合" : "闲家回合"}`;
+  const isViewerTurn = currentPlayer()?.id === state.viewerId && (state.status ? state.status === "player_turn" : !state.dealerRevealed);
+  els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
+  els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
+  els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}`;
   els.turnLabel.textContent = state.dealerRevealed
     ? "庄家牌已亮，等待结算"
     : isViewerTurn
       ? "轮到你行动"
-      : `等待 ${currentPlayer().name} 行动`;
-  els.revealBtn.disabled = state.dealerRevealed;
+      : currentPlayer()
+        ? `等待 ${currentPlayer().name} 行动`
+        : "等待开局";
+  els.revealBtn.disabled = state.online ? !["player_turn", "dealer_turn"].includes(state.status) : state.dealerRevealed;
   els.hitBtn.disabled = !isViewerTurn;
   els.standBtn.disabled = !isViewerTurn;
   els.hitBtn.textContent = isViewerTurn ? "要牌" : "等待中";
   els.standBtn.textContent = isViewerTurn ? "停牌" : "等待中";
+  els.dealBtn.textContent = state.online && state.status === "lobby" ? "开始游戏" : "下一局";
+  els.connectionState.textContent = state.online ? `在线 · 房间 ${state.roomCode}` : "离线演示模式";
+}
+
+function getRoundLabel() {
+  if (state.status === "lobby") return "等待开局";
+  if (state.status === "settlement") return "结算完成";
+  if (state.status === "dealer_turn") return "庄家回合";
+  if (state.status === "player_turn") return "闲家回合";
+  return state.dealerRevealed ? "庄家回合" : "闲家回合";
 }
 
 function renderSeat(player, isHouse, animateCards, flipDealer) {
@@ -374,7 +420,7 @@ function renderHand(hand, player, handIndex, animateCards, flipDealer) {
 }
 
 function renderCard(card, hidden, animate, flip, isSpecialHand) {
-  if (hidden) return `<div class="card back ${animate ? "dealt" : ""}"></div>`;
+  if (hidden || card?.hidden) return `<div class="card back ${animate ? "dealt" : ""}"></div>`;
   const red = ["♥", "♦"].includes(card.suit) ? "red" : "";
   const special = isSpecialHand ? "special" : "";
   return `
@@ -385,10 +431,104 @@ function renderCard(card, hidden, animate, flip, isSpecialHand) {
   `;
 }
 
+function normalizeApiBase(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+async function apiRequest(path, options = {}) {
+  const apiBase = normalizeApiBase(els.apiBaseInput.value || state.apiBase);
+  if (!apiBase) throw new Error("请先填写后端地址");
+  const response = await fetch(`${apiBase}${path}`, {
+    ...options,
+    headers: {
+      "content-type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "请求失败");
+  return data;
+}
+
+function applyOnlineSnapshot(payload) {
+  state.online = true;
+  state.playerId = payload.playerId || state.playerId;
+  state.viewerId = state.playerId;
+  state.roomCode = payload.room?.code || state.roomCode;
+  localStorage.setItem("apiBase", normalizeApiBase(els.apiBaseInput.value || state.apiBase));
+  localStorage.setItem("roomCode", state.roomCode);
+  localStorage.setItem("playerId", state.playerId);
+  Object.assign(state, payload.room);
+  state.viewerId = state.playerId;
+  state.logs = payload.room.events || [];
+  addLog(state.logs[0] || "房间状态已同步。");
+  render(true);
+  startPolling();
+}
+
+async function createOnlineRoom() {
+  try {
+    state.apiBase = normalizeApiBase(els.apiBaseInput.value);
+    const payload = await apiRequest("/api/rooms", {
+      method: "POST",
+      body: JSON.stringify({ nickname: els.nicknameInput.value, maxPlayers: 5 }),
+    });
+    els.roomCodeInput.value = payload.room.code;
+    applyOnlineSnapshot(payload);
+    showToast(`房间 ${payload.room.code} 已创建`);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function joinOnlineRoom() {
+  try {
+    state.apiBase = normalizeApiBase(els.apiBaseInput.value);
+    const code = els.roomCodeInput.value.trim();
+    const payload = await apiRequest(`/api/rooms/${code}/join`, {
+      method: "POST",
+      body: JSON.stringify({ nickname: els.nicknameInput.value }),
+    });
+    applyOnlineSnapshot(payload);
+    showToast(`已加入房间 ${code}`);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function syncOnlineRoom() {
+  if (!state.online || !state.roomCode || !state.playerId) return;
+  try {
+    const payload = await apiRequest(`/api/rooms/${state.roomCode}?playerId=${encodeURIComponent(state.playerId)}`);
+    applyOnlineSnapshot(payload);
+  } catch (error) {
+    els.connectionState.textContent = `同步失败：${error.message}`;
+  }
+}
+
+function startPolling() {
+  window.clearInterval(state.pollTimer);
+  state.pollTimer = window.setInterval(syncOnlineRoom, 1800);
+}
+
+async function sendAction(type) {
+  try {
+    const payload = await apiRequest(`/api/rooms/${state.roomCode}/action`, {
+      method: "POST",
+      body: JSON.stringify({ playerId: state.playerId, type }),
+    });
+    applyOnlineSnapshot(payload);
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 els.dealBtn.addEventListener("click", resetRound);
 els.hitBtn.addEventListener("click", hit);
 els.standBtn.addEventListener("click", stand);
 els.revealBtn.addEventListener("click", revealDealer);
+els.createRoomBtn.addEventListener("click", createOnlineRoom);
+els.joinRoomBtn.addEventListener("click", joinOnlineRoom);
 
 state.deck = shuffle(createDeck());
 state.round = 0;

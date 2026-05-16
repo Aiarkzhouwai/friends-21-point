@@ -17,14 +17,16 @@
 
 ## 当前原型
 
-已添加一个零依赖网页原型：
+已添加一个零依赖网页前端和一个零依赖 Node 在线房间服务：
 
 - `index.html`
 - `styles.css`
 - `app.js`
 - `scripts/build.mjs`
+- `server.mjs`
+- `render.yaml`
 
-直接用浏览器打开 `index.html` 即可体验。当前原型用于验证牌桌布局、庄家暗牌、发牌/翻牌动效和基础回合反馈；在线房间、真实多人同步和完整拆分流程会在后续工程化阶段接入。
+直接用浏览器打开 `index.html` 即可体验离线演示。部署 `server.mjs` 后，在页面底部填写后端地址即可创建/加入在线房间。
 
 生成可发布目录：
 
@@ -33,6 +35,18 @@ node scripts/build.mjs
 ```
 
 发布目录为 `dist/`。
+
+本地启动在线房间服务：
+
+```bash
+node server.mjs
+```
+
+健康检查：
+
+```bash
+curl http://127.0.0.1:8787/health
+```
 
 ## 下一步
 
