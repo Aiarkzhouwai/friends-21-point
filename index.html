@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>21 点朋友局</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="table-area" aria-label="21 点牌桌">
+        <header class="topbar">
+          <div class="nav-cluster">
+            <button class="icon-btn" type="button" aria-label="返回">‹</button>
+            <button class="icon-btn" type="button" aria-label="菜单">☰</button>
+          </div>
+          <div class="room-title">
+            <h1>朋友局 21 点</h1>
+            <p>房间号：4862 · 轮庄桌 10/50</p>
+          </div>
+          <div class="room-meta">
+            <span>4/5 人</span>
+            <span id="deckCount">牌库 52</span>
+            <span>底注 10</span>
+          </div>
+          <div class="nav-cluster right">
+            <button class="icon-btn" type="button" aria-label="战绩">♕</button>
+            <button class="icon-btn" type="button" aria-label="设置">⚙</button>
+            <button class="icon-btn" type="button" aria-label="更多">•••</button>
+          </div>
+        </header>
+
+        <section class="poker-table" aria-label="圆桌牌局">
+          <div class="table-felt" aria-hidden="true">
+            <div class="table-rail"></div>
+            <div class="table-center">
+              <div class="deck-zone">
+                <div class="deck-stack" id="deckStack">
+                  <div class="card back mini"></div>
+                  <div class="card back mini"></div>
+                  <div class="card back mini"></div>
+                </div>
+                <div class="discard-pill" id="discardCount">已用 0</div>
+              </div>
+              <div class="center-status">
+                <p id="roundLabel">第 1 局 · 闲家回合</p>
+                <strong id="turnLabel">阿周行动中</strong>
+                <span id="latestEvent">等待玩家操作</span>
+              </div>
+              <div class="chip-pot" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span>
+              </div>
+            </div>
+          </div>
+
+          <div id="dealerArea"></div>
+          <div id="playersGrid"></div>
+        </section>
+
+        <aside class="quick-rail" aria-label="快捷入口">
+          <button type="button">商城</button>
+          <button type="button">任务</button>
+          <button type="button">排行</button>
+        </aside>
+
+        <div class="action-panel">
+          <button class="danger" id="standBtn" type="button">停牌</button>
+          <button class="primary" id="hitBtn" type="button">要牌</button>
+          <button class="success" id="revealBtn" type="button">亮庄家牌</button>
+          <div class="bet-widget">
+            <span>下注</span>
+            <strong>20</strong>
+            <span>10-50</span>
+          </div>
+          <button id="dealBtn" type="button">重新发牌</button>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
