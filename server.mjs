@@ -101,6 +101,15 @@ function handRank(cards) {
   return { level: 0, multiplier: 1 };
 }
 
+function handLabel(cards) {
+  if (isBust(cards)) return "爆牌";
+  const rank = handRank(cards);
+  if (rank.level === 3) return "五小牛";
+  if (rank.level === 2) return "一对 A";
+  if (rank.level === 1) return "21 点";
+  return `${handScore(cards)} 点`;
+}
+
 function isBust(cards) {
   return handScore(cards) > 21;
 }
@@ -288,6 +297,25 @@ function compareHands(playerCards, dealerCards) {
   return -1;
 }
 
+function compareReason(playerCards, dealerCards, result) {
+  const playerBust = isBust(playerCards);
+  const dealerBust = isBust(dealerCards);
+  if (playerBust && dealerBust) return "双方爆牌，闲家胜";
+  if (dealerBust) return "庄家爆牌，闲家胜";
+  if (playerBust) return "闲家爆牌，庄家胜";
+
+  const playerRank = handRank(playerCards).level;
+  const dealerRank = handRank(dealerCards).level;
+  if (playerRank !== dealerRank) {
+    return result > 0 ? `${handLabel(playerCards)} 胜出` : `${handLabel(dealerCards)} 胜出`;
+  }
+
+  const playerScore = handScore(playerCards);
+  const dealerScore = handScore(dealerCards);
+  if (playerScore === dealerScore) return "同点庄赢";
+  return result > 0 ? "闲家点数更高" : "庄家点数更高";
+}
+
 function settleRound(room) {
   const house = dealer(room);
   const houseHand = house.hands[0];
@@ -308,6 +336,9 @@ function settleRound(room) {
       multiplier,
       delta,
       result: result > 0 ? "win" : "lose",
+      reason: compareReason(hand.cards, houseHand.cards, result),
+      playerHandLabel: handLabel(hand.cards),
+      dealerHandLabel: handLabel(houseHand.cards),
       playerTotal: player.chips,
       dealerTotal: house.chips,
     });
@@ -370,10 +401,12 @@ function visibleRoom(room, viewerId) {
     usedCount: room.used.length,
     events: room.events.slice(0, 5),
     settlements: room.settlements || [],
+    showdownSteps: room.settlements || [],
     updatedAt: room.updatedAt,
     viewerId,
     players: room.players.map((player) => {
       const canSeeHand = (hand) =>
+        room.status === "settlement" ||
         player.id === viewerId ||
         (player.isDealer && room.dealerRevealed) ||
         hand.busted ||

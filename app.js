@@ -10,6 +10,12 @@ const state = {
   playerId: localStorage.getItem("playerId") || "",
   pollTimer: null,
   selectedBet: 20,
+  showdown: {
+    key: "",
+    index: 0,
+    showPanel: false,
+    timer: null,
+  },
   round: 1,
   deck: [],
   used: [],
@@ -89,6 +95,7 @@ const els = {
   confirmBetBtn: document.querySelector("#confirmBetBtn"),
   settlementSheet: document.querySelector("#settlementSheet"),
   settlementEvents: document.querySelector("#settlementEvents"),
+  showdownBanner: document.querySelector("#showdownBanner"),
 };
 
 els.apiBaseInput.value = state.apiBase;
@@ -349,6 +356,7 @@ function modeFromStatus() {
 
 function render(animateCards = false, flipDealer = false) {
   setMode(modeFromStatus());
+  updateShowdownState();
 
   if (state.uiMode === "entry") {
     els.entryStatus.textContent = state.apiBase ? "在线服务已连接" : "请先设置后端地址";
@@ -380,7 +388,11 @@ function render(animateCards = false, flipDealer = false) {
   els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
   els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
   els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}`;
-  els.turnLabel.textContent = state.status === "betting"
+  els.turnLabel.textContent = state.status === "settlement"
+    ? state.showdown.showPanel
+      ? "本局结算完成"
+      : "逐家比牌中"
+    : state.status === "betting"
     ? "等待闲家下注"
     : state.status === "dealer_turn"
     ? isViewerDealerTurn
@@ -402,7 +414,46 @@ function render(animateCards = false, flipDealer = false) {
   els.dealBtn.textContent = state.online && state.status === "lobby" ? "开始游戏" : "下一局";
   renderBetPanel(isViewerBetting, viewerBetConfirmed, viewerHand?.bet || 20);
   els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn, isViewerBetting, viewerBetConfirmed);
+  renderShowdownBanner();
   renderSettlement();
+}
+
+function updateShowdownState() {
+  if (state.status !== "settlement") {
+    window.clearTimeout(state.showdown.timer);
+    state.showdown.key = "";
+    state.showdown.index = 0;
+    state.showdown.showPanel = false;
+    return;
+  }
+
+  const steps = state.showdownSteps || state.settlements || [];
+  const key = `${state.roomCode || "local"}-${state.round}-${state.updatedAt || ""}`;
+  if (state.showdown.key === key) return;
+
+  window.clearTimeout(state.showdown.timer);
+  state.showdown.key = key;
+  state.showdown.index = 0;
+  state.showdown.showPanel = steps.length === 0;
+
+  if (steps.length) {
+    scheduleShowdownStep(steps.length);
+  }
+}
+
+function scheduleShowdownStep(total) {
+  window.clearTimeout(state.showdown.timer);
+  state.showdown.timer = window.setTimeout(() => {
+    if (state.status !== "settlement") return;
+    if (state.showdown.index < total - 1) {
+      state.showdown.index += 1;
+      render(false);
+      scheduleShowdownStep(total);
+      return;
+    }
+    state.showdown.showPanel = true;
+    render(false);
+  }, 1700);
 }
 
 function renderLobby() {
@@ -437,6 +488,8 @@ function renderLobbyPlayer(player) {
 function renderViewerSeat(player, animateCards) {
   const handHtml = player.hands.map((hand, index) => renderHand(hand, player, index, animateCards, false)).join("");
   const role = player.isDealer ? "庄家" : getPlayerStateLabel(player);
+  const showdownStep = currentShowdownStep();
+  const resultBadge = showdownStep && player.id === showdownStep.playerId ? renderResultBadge(showdownStep) : "";
   return `
     <article class="viewer-panel">
       <div class="viewer-profile">
@@ -447,6 +500,7 @@ function renderViewerSeat(player, animateCards) {
         </div>
       </div>
       <div class="viewer-hands">${handHtml}</div>
+      ${resultBadge}
     </article>
   `;
 }
@@ -487,7 +541,7 @@ function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting
 }
 
 function renderSettlement() {
-  const visible = state.status === "settlement";
+  const visible = state.status === "settlement" && state.showdown.showPanel;
   els.settlementSheet.classList.toggle("show", visible);
   if (!visible) return;
   const settlements = state.settlements || [];
@@ -522,6 +576,27 @@ function renderSettlement() {
     : (state.logs || []).slice(0, 4).map((event) => `<p>${event}</p>`).join("");
 }
 
+function currentShowdownStep() {
+  if (state.status !== "settlement" || state.showdown.showPanel) return null;
+  const steps = state.showdownSteps || state.settlements || [];
+  return steps[state.showdown.index] || null;
+}
+
+function renderShowdownBanner() {
+  const step = currentShowdownStep();
+  els.showdownBanner.classList.toggle("show", Boolean(step));
+  if (!step) {
+    els.showdownBanner.innerHTML = "";
+    return;
+  }
+  const delta = step.delta > 0 ? `+${step.delta}` : `${step.delta}`;
+  els.showdownBanner.innerHTML = `
+    <strong>${step.playerName} vs ${step.dealerName}</strong>
+    <span>${step.playerHandLabel} 对 ${step.dealerHandLabel}</span>
+    <em>${step.reason} · ${delta}</em>
+  `;
+}
+
 function getRoundLabel() {
   if (state.status === "lobby") return "等待开局";
   if (state.status === "betting") return "下注中";
@@ -537,9 +612,12 @@ function renderSeat(player, isHouse, animateCards, flipDealer) {
   const isViewer = player.id === state.viewerId;
   const active = !isHouse && currentPlayer()?.id === player.id && !state.dealerRevealed;
   const busted = player.hands.some((hand) => hand.busted);
+  const showdownStep = currentShowdownStep();
+  const isShowdownFocus = showdownStep && (player.id === showdownStep.playerId || player.id === showdownStep.dealerId);
+  const resultBadge = showdownStep && player.id === showdownStep.playerId ? renderResultBadge(showdownStep) : "";
   const seatClass = isHouse
-    ? "seat-position dealer-position compact-seat dealer-card"
-    : `seat-position player-seat seat-${seatIndex} ${isViewer ? "viewer-seat" : "compact-seat"} ${active ? "active" : ""} ${busted ? "busted" : ""}`;
+    ? `seat-position dealer-position compact-seat dealer-card ${isShowdownFocus ? "showdown-focus" : ""}`
+    : `seat-position player-seat seat-${seatIndex} ${isViewer ? "viewer-seat" : "compact-seat"} ${active ? "active" : ""} ${busted ? "busted" : ""} ${isShowdownFocus ? "showdown-focus" : ""}`;
   const chips = player.chips >= 0 ? `+${player.chips}` : player.chips;
   const initials = player.name.slice(0, 1);
   const actionState = getPlayerStateLabel(player);
@@ -559,8 +637,16 @@ function renderSeat(player, isHouse, animateCards, flipDealer) {
           <small>${actionState}</small>
         </div>
       </div>
+      ${resultBadge}
     </article>
   `;
+}
+
+function renderResultBadge(step) {
+  const positive = step.delta > 0;
+  const text = positive ? "赢麻啦！" : "亏瞎了～";
+  const delta = positive ? `+${step.delta}` : `${step.delta}`;
+  return `<div class="result-badge ${positive ? "win" : "lose"}"><strong>${text}</strong><span>${delta}</span></div>`;
 }
 
 function canRevealHand(player) {
@@ -583,26 +669,32 @@ function getPlayerStateLabel(player) {
 }
 
 function renderHand(hand, player, handIndex, animateCards, flipDealer) {
-  const reveal = canRevealHand(player);
   const isHouse = player.isDealer;
-  const rank = reveal ? handRank(hand.cards) : { label: "", level: 0 };
+  const allCardsVisible = hand.cards.every((card, index) => !isCardHidden(card, player, index));
+  const rank = allCardsVisible ? handRank(hand.cards) : { label: "", level: 0 };
   const visibleCards = hand.cards.map((card, index) => {
-    const hidden = !reveal || (isHouse && player.id !== state.viewerId && !state.dealerRevealed && index > 0);
+    const hidden = isCardHidden(card, player, index);
     return renderCard(card, hidden, animateCards, flipDealer && !hidden, rank.level > 0);
   });
-  const score = reveal ? handScore(hand.cards) : `${hand.cards.length} 张牌`;
-  const bustClass = reveal && isBust(hand.cards) ? "bust" : "";
+  const score = allCardsVisible ? handScore(hand.cards) : `${hand.cards.length} 张牌`;
+  const bustClass = allCardsVisible && isBust(hand.cards) ? "bust" : "";
   const hotClass = rank.label ? "hot" : "";
   return `
     <div class="hand-wrap">
       <div class="hand-row ${handIndex > 0 ? "split" : ""}">${visibleCards.join("")}</div>
       <div class="hand-meta">
-        <span class="score-pill ${bustClass || hotClass}">${bustClass ? "爆牌" : reveal ? `${score} 点` : score}</span>
+        <span class="score-pill ${bustClass || hotClass}">${bustClass ? "爆牌" : allCardsVisible ? `${score} 点` : score}</span>
         ${hand.bet ? `<span class="score-pill">下注 ${hand.bet}</span>` : ""}
         ${rank.label ? `<span class="tag">${rank.label}</span>` : ""}
       </div>
     </div>
   `;
+}
+
+function isCardHidden(card, player, index) {
+  if (!card || card.hidden) return true;
+  if (player.isDealer && player.id !== state.viewerId && !state.dealerRevealed && index > 0) return true;
+  return false;
 }
 
 function renderCard(card, hidden, animate, flip, isSpecialHand) {
