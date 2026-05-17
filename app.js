@@ -453,7 +453,7 @@ function scheduleShowdownStep(total) {
     }
     state.showdown.showPanel = true;
     render(false);
-  }, 1700);
+  }, 2800);
 }
 
 function renderLobby() {
@@ -610,7 +610,7 @@ function renderSeat(player, isHouse, animateCards, flipDealer) {
   const otherPlayers = state.players.filter((item) => !item.isDealer && item.id !== state.viewerId);
   const seatIndex = player.id === state.viewerId ? 0 : otherPlayers.findIndex((item) => item.id === player.id) + 1;
   const isViewer = player.id === state.viewerId;
-  const active = !isHouse && currentPlayer()?.id === player.id && !state.dealerRevealed;
+  const active = ["player_turn", "dealer_turn"].includes(state.status) && currentPlayer()?.id === player.id;
   const busted = player.hands.some((hand) => hand.busted);
   const showdownStep = currentShowdownStep();
   const isShowdownFocus = showdownStep && (player.id === showdownStep.playerId || player.id === showdownStep.dealerId);
@@ -658,9 +658,18 @@ function canRevealHand(player) {
 
 function getPlayerStateLabel(player) {
   if (player.isDealer) {
+    if (player.hands.some((hand) => hand.busted)) return "爆牌";
     if (state.status === "dealer_turn") return player.id === state.viewerId ? "你决策" : "庄家决策";
     return state.dealerRevealed ? "庄家亮牌" : "暗牌";
   }
+  if (player.hands.some((hand) => hand.busted)) return "爆牌";
+  const revealedSpecial = player.hands
+    .map((hand) => {
+      const visible = hand.cards.length > 0 && hand.cards.every((card, index) => !isCardHidden(card, player, index));
+      return visible ? handRank(hand.cards).label : "";
+    })
+    .find(Boolean);
+  if (revealedSpecial) return revealedSpecial;
   if (currentPlayer()?.id === player.id && !state.dealerRevealed) {
     return player.id === state.viewerId ? "轮到你" : "行动中";
   }
