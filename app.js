@@ -367,25 +367,31 @@ function render(animateCards = false, flipDealer = false) {
   els.viewerArea.innerHTML = viewer ? renderViewerSeat(viewer, animateCards) : renderSpectatorSeat();
 
   const isViewerTurn = currentPlayer()?.id === state.viewerId && (state.status ? state.status === "player_turn" : !state.dealerRevealed);
+  const isViewerDealerTurn = house.id === state.viewerId && state.status === "dealer_turn";
+  const viewerHand = viewer?.hands?.[0];
+  const mustHit = viewerHand ? handScore(viewerHand.cards) <= 13 : false;
   els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
   els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
   els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}`;
-  els.turnLabel.textContent = state.dealerRevealed
-    ? "庄家牌已亮，等待结算"
+  els.turnLabel.textContent = state.status === "dealer_turn"
+    ? isViewerDealerTurn
+      ? "庄家回合，等待你决策"
+      : "庄家牌已亮，等待庄家决策"
     : isViewerTurn
       ? "轮到你行动"
       : currentPlayer()
         ? `等待 ${currentPlayer().name} 行动`
         : "等待开局";
   const isViewerDealer = house.id === state.viewerId;
-  const canRevealDealer = state.online ? state.status === "dealer_turn" && isViewerDealer : !state.dealerRevealed;
+  const canRevealDealer = state.online ? false : !state.dealerRevealed;
   els.revealBtn.disabled = !canRevealDealer;
-  els.hitBtn.disabled = !isViewerTurn;
-  els.standBtn.disabled = !isViewerTurn;
-  els.hitBtn.textContent = isViewerTurn ? "要牌" : "等待中";
-  els.standBtn.textContent = isViewerTurn ? "停牌" : "等待中";
+  els.hitBtn.disabled = !(isViewerTurn || isViewerDealerTurn);
+  els.standBtn.disabled = !(isViewerTurn || isViewerDealerTurn) || mustHit;
+  els.hitBtn.textContent = isViewerTurn || isViewerDealerTurn ? "要牌" : "等待中";
+  els.standBtn.textContent = (isViewerTurn || isViewerDealerTurn) && mustHit ? "必须要牌" : isViewerTurn || isViewerDealerTurn ? "停牌" : "等待中";
+  els.revealBtn.textContent = state.status === "dealer_turn" ? "庄家决策中" : "亮庄家牌";
   els.dealBtn.textContent = state.online && state.status === "lobby" ? "开始游戏" : "下一局";
-  els.actionHint.textContent = getActionHint(isViewerTurn);
+  els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn);
   renderSettlement();
 }
 
@@ -444,9 +450,10 @@ function renderSpectatorSeat() {
   `;
 }
 
-function getActionHint(isViewerTurn) {
+function getActionHint(isViewerTurn, isViewerDealerTurn = false) {
   if (state.status === "settlement") return "本局已结算";
-  if (state.status === "dealer_turn") return "庄家回合";
+  if (isViewerDealerTurn) return "庄家回合：你可以要牌或停牌";
+  if (state.status === "dealer_turn") return "庄家牌已亮，等待庄家决策";
   if (isViewerTurn) return "轮到你行动";
   if (currentPlayer()) return `等待 ${currentPlayer().name} 行动`;
   return "等待开局";
@@ -456,10 +463,36 @@ function renderSettlement() {
   const visible = state.status === "settlement";
   els.settlementSheet.classList.toggle("show", visible);
   if (!visible) return;
-  els.settlementEvents.innerHTML = (state.logs || [])
-    .slice(0, 4)
-    .map((event) => `<p>${event}</p>`)
-    .join("");
+  const settlements = state.settlements || [];
+  const rows = settlements.map((item) => {
+    const positive = item.delta > 0;
+    const label = positive ? `+${item.delta}` : `${item.delta}`;
+    return `
+      <article class="settlement-row ${positive ? "win" : "lose"}">
+        <div>
+          <strong>${item.playerName}</strong>
+          <small>下注 ${item.bet} · 倍率 x${item.multiplier}</small>
+        </div>
+        <span>${label}</span>
+      </article>
+    `;
+  });
+  if (settlements.length) {
+    const dealerDelta = settlements.reduce((sum, item) => sum - item.delta, 0);
+    const dealerName = settlements[0].dealerName || "庄家";
+    rows.push(`
+      <article class="settlement-row dealer-total ${dealerDelta >= 0 ? "win" : "lose"}">
+        <div>
+          <strong>${dealerName}</strong>
+          <small>庄家本轮总盈亏</small>
+        </div>
+        <span>${dealerDelta >= 0 ? `+${dealerDelta}` : dealerDelta}</span>
+      </article>
+    `);
+  }
+  els.settlementEvents.innerHTML = rows.length
+    ? rows.join("")
+    : (state.logs || []).slice(0, 4).map((event) => `<p>${event}</p>`).join("");
 }
 
 function getRoundLabel() {
@@ -505,11 +538,15 @@ function renderSeat(player, isHouse, animateCards, flipDealer) {
 function canRevealHand(player) {
   if (player.id === state.viewerId) return true;
   if (player.isDealer && state.dealerRevealed) return true;
+  if (player.hands.some((hand) => hand.cards.some((card) => card && !card.hidden))) return true;
   return false;
 }
 
 function getPlayerStateLabel(player) {
-  if (player.isDealer) return state.dealerRevealed ? "庄家亮牌" : "暗牌";
+  if (player.isDealer) {
+    if (state.status === "dealer_turn") return player.id === state.viewerId ? "你决策" : "庄家决策";
+    return state.dealerRevealed ? "庄家亮牌" : "暗牌";
+  }
   if (currentPlayer()?.id === player.id && !state.dealerRevealed) {
     return player.id === state.viewerId ? "轮到你" : "行动中";
   }
@@ -544,8 +581,9 @@ function renderCard(card, hidden, animate, flip, isSpecialHand) {
   if (hidden || card?.hidden) return `<div class="card back ${animate ? "dealt" : ""}"></div>`;
   const red = ["♥", "♦"].includes(card.suit) ? "red" : "";
   const special = isSpecialHand ? "special" : "";
+  const specialAnimate = isSpecialHand && animate ? "special-animate" : "";
   return `
-    <div class="card ${red} ${animate ? "dealt" : ""} ${flip ? "flip" : ""} ${special}">
+    <div class="card ${red} ${animate ? "dealt" : ""} ${flip ? "flip" : ""} ${special} ${specialAnimate}">
       <span class="rank">${card.rank}</span>
       <span class="suit">${card.suit}</span>
     </div>
@@ -571,7 +609,7 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
-function applyOnlineSnapshot(payload) {
+function applyOnlineSnapshot(payload, options = {}) {
   state.online = true;
   state.playerId = payload.playerId || state.playerId;
   state.viewerId = state.playerId;
@@ -586,7 +624,7 @@ function applyOnlineSnapshot(payload) {
   if (els.latestEvent) {
     els.latestEvent.textContent = state.logs[0] || "房间状态已同步。";
   }
-  render(true);
+  render(Boolean(options.animate));
   startPolling();
 }
 
@@ -598,7 +636,7 @@ async function createOnlineRoom() {
       body: JSON.stringify({ nickname: els.nicknameInput.value, maxPlayers: 5 }),
     });
     els.roomCodeInput.value = payload.room.code;
-    applyOnlineSnapshot(payload);
+    applyOnlineSnapshot(payload, { animate: true });
     showToast(`房间 ${payload.room.code} 已创建`);
   } catch (error) {
     showToast(error.message);
@@ -613,7 +651,7 @@ async function joinOnlineRoom() {
       method: "POST",
       body: JSON.stringify({ nickname: els.nicknameInput.value }),
     });
-    applyOnlineSnapshot(payload);
+    applyOnlineSnapshot(payload, { animate: true });
     showToast(`已加入房间 ${code}`);
   } catch (error) {
     showToast(error.message);
@@ -624,7 +662,7 @@ async function syncOnlineRoom() {
   if (!state.online || !state.roomCode || !state.playerId) return;
   try {
     const payload = await apiRequest(`/api/rooms/${state.roomCode}?playerId=${encodeURIComponent(state.playerId)}`);
-    applyOnlineSnapshot(payload);
+    applyOnlineSnapshot(payload, { animate: false });
   } catch (error) {
     els.connectionState.textContent = `同步失败：${error.message}`;
   }
@@ -666,7 +704,7 @@ async function sendAction(type) {
       method: "POST",
       body: JSON.stringify({ playerId: state.playerId, type }),
     });
-    applyOnlineSnapshot(payload);
+    applyOnlineSnapshot(payload, { animate: true });
   } catch (error) {
     showToast(error.message);
   }

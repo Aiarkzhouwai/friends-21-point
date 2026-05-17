@@ -131,6 +131,7 @@ function createRoom(nickname, maxPlayers = 5) {
     used: [],
     players: [host],
     events: [`${host.nickname} 创建了房间。`],
+    settlements: [],
     updatedAt: Date.now(),
   };
   rooms.set(code, room);
@@ -182,6 +183,7 @@ function startRound(room) {
   const first = idlePlayers(room)[0];
   room.currentTurnPlayerId = first?.id || null;
   room.events.unshift(`第 ${room.round} 局开始。`);
+  room.settlements = [];
   room.updatedAt = Date.now();
 }
 
@@ -193,22 +195,46 @@ function nextTurn(room) {
     room.currentTurnPlayerId = next.id;
     return;
   }
-  dealerTurn(room);
+  startDealerTurn(room);
 }
 
-function dealerTurn(room) {
-  const house = dealer(room);
-  const hand = house.hands[0];
+function startDealerTurn(room) {
   room.status = "dealer_turn";
   room.dealerRevealed = true;
-  while (handScore(hand.cards) <= 13) {
-    const card = drawCard(room);
-    hand.cards.push(card);
-    room.events.unshift(`庄家补到一张牌。`);
+  room.currentTurnPlayerId = dealer(room).id;
+  room.events.unshift("闲家行动结束，庄家亮牌。");
+  room.updatedAt = Date.now();
+}
+
+function dealerHit(room, player) {
+  const house = dealer(room);
+  if (room.status !== "dealer_turn") throw new Error("当前不是庄家回合");
+  if (player.id !== house.id) throw new Error("只有庄家可以操作");
+  const hand = house.hands[0];
+  if (hand.stood || hand.busted) throw new Error("庄家手牌已结束");
+  const card = drawCard(room);
+  hand.cards.push(card);
+  room.events.unshift(`庄家要牌。`);
+  if (isBust(hand.cards)) {
+    hand.busted = true;
+    hand.stood = true;
+    room.events.unshift("庄家爆牌。");
+    settleRound(room);
+    return;
   }
-  hand.busted = isBust(hand.cards);
+  room.updatedAt = Date.now();
+}
+
+function dealerStand(room, player) {
+  const house = dealer(room);
+  if (room.status !== "dealer_turn") throw new Error("当前不是庄家回合");
+  if (player.id !== house.id) throw new Error("只有庄家可以操作");
+  const hand = house.hands[0];
+  while (handScore(hand.cards) <= 13) {
+    throw new Error("小于等于 13 必须要牌");
+  }
   hand.stood = true;
-  room.events.unshift(hand.busted ? "庄家爆牌。" : `庄家 ${handScore(hand.cards)} 点停牌。`);
+  room.events.unshift(`庄家 ${handScore(hand.cards)} 点停牌。`);
   settleRound(room);
 }
 
@@ -232,6 +258,7 @@ function compareHands(playerCards, dealerCards) {
 function settleRound(room) {
   const house = dealer(room);
   const houseHand = house.hands[0];
+  room.settlements = [];
   idlePlayers(room).forEach((player) => {
     const hand = player.hands[0];
     const result = compareHands(hand.cards, houseHand.cards);
@@ -239,6 +266,18 @@ function settleRound(room) {
     const delta = hand.bet * multiplier * result;
     player.chips += delta;
     house.chips -= delta;
+    room.settlements.push({
+      playerId: player.id,
+      playerName: player.nickname,
+      dealerId: house.id,
+      dealerName: house.nickname,
+      bet: hand.bet,
+      multiplier,
+      delta,
+      result: result > 0 ? "win" : "lose",
+      playerTotal: player.chips,
+      dealerTotal: house.chips,
+    });
   });
   room.status = "settlement";
   room.currentTurnPlayerId = null;
@@ -247,6 +286,10 @@ function settleRound(room) {
 }
 
 function hit(room, player) {
+  if (room.status === "dealer_turn") {
+    dealerHit(room, player);
+    return;
+  }
   if (room.status !== "player_turn") throw new Error("当前不能要牌");
   if (room.currentTurnPlayerId !== player.id) throw new Error("还没轮到你");
   const hand = player.hands[0];
@@ -264,6 +307,10 @@ function hit(room, player) {
 }
 
 function stand(room, player) {
+  if (room.status === "dealer_turn") {
+    dealerStand(room, player);
+    return;
+  }
   if (room.status !== "player_turn") throw new Error("当前不能停牌");
   if (room.currentTurnPlayerId !== player.id) throw new Error("还没轮到你");
   const hand = player.hands[0];
@@ -289,9 +336,15 @@ function visibleRoom(room, viewerId) {
     deckCount: room.deck.length,
     usedCount: room.used.length,
     events: room.events.slice(0, 5),
+    settlements: room.settlements || [],
+    updatedAt: room.updatedAt,
     viewerId,
     players: room.players.map((player) => {
-      const canSee = player.id === viewerId || (player.isDealer && room.dealerRevealed);
+      const canSeeHand = (hand) =>
+        player.id === viewerId ||
+        (player.isDealer && room.dealerRevealed) ||
+        hand.busted ||
+        (hand.stood && handRank(hand.cards).level > 0);
       return {
         id: player.id,
         name: player.nickname,
@@ -304,7 +357,7 @@ function visibleRoom(room, viewerId) {
           bet: hand.bet,
           stood: hand.stood,
           busted: hand.busted,
-          cards: hand.cards.map((card) => (canSee ? publicCard(card) : { hidden: true })),
+          cards: hand.cards.map((card) => (canSeeHand(hand) ? publicCard(card) : { hidden: true })),
         })),
       };
     }),
@@ -358,7 +411,7 @@ async function handle(req, res) {
       if (body.type === "start_round") startRound(room);
       else if (body.type === "hit") hit(room, player);
       else if (body.type === "stand") stand(room, player);
-      else if (body.type === "reveal_dealer") dealerTurn(room);
+      else if (body.type === "reveal_dealer") startDealerTurn(room);
       else throw new Error("未知操作");
       return json(res, 200, { room: visibleRoom(room, player.id), playerId: player.id });
     }
