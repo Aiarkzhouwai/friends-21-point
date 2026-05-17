@@ -4,6 +4,7 @@ const DEFAULT_API_BASE = "https://friends-21-point-api.onrender.com";
 
 const state = {
   online: false,
+  uiMode: "entry",
   apiBase: localStorage.getItem("apiBase") || DEFAULT_API_BASE,
   roomCode: localStorage.getItem("roomCode") || "",
   playerId: localStorage.getItem("playerId") || "",
@@ -48,29 +49,46 @@ const state = {
 };
 
 const els = {
+  entryScreen: document.querySelector("#entryScreen"),
+  lobbyScreen: document.querySelector("#lobbyScreen"),
+  gameScreen: document.querySelector("#gameScreen"),
   dealerArea: document.querySelector("#dealerArea"),
   playersGrid: document.querySelector("#playersGrid"),
+  viewerArea: document.querySelector("#viewerArea"),
   deckCount: document.querySelector("#deckCount"),
   discardCount: document.querySelector("#discardCount"),
   roundLabel: document.querySelector("#roundLabel"),
   turnLabel: document.querySelector("#turnLabel"),
   latestEvent: document.querySelector("#latestEvent"),
   toast: document.querySelector("#toast"),
+  entryStatus: document.querySelector("#entryStatus"),
   dealBtn: document.querySelector("#dealBtn"),
+  nextRoundBtn: document.querySelector("#nextRoundBtn"),
   hitBtn: document.querySelector("#hitBtn"),
   standBtn: document.querySelector("#standBtn"),
   revealBtn: document.querySelector("#revealBtn"),
-  roomPanel: document.querySelector("#roomPanel"),
   connectionState: document.querySelector("#connectionState"),
   nicknameInput: document.querySelector("#nicknameInput"),
   roomCodeInput: document.querySelector("#roomCodeInput"),
   apiBaseInput: document.querySelector("#apiBaseInput"),
   createRoomBtn: document.querySelector("#createRoomBtn"),
   joinRoomBtn: document.querySelector("#joinRoomBtn"),
+  continueRoomBtn: document.querySelector("#continueRoomBtn"),
+  leaveRoomBtn: document.querySelector("#leaveRoomBtn"),
+  backToLobbyBtn: document.querySelector("#backToLobbyBtn"),
+  copyRoomBtn: document.querySelector("#copyRoomBtn"),
+  lobbyRoomCode: document.querySelector("#lobbyRoomCode"),
+  playerCountLabel: document.querySelector("#playerCountLabel"),
+  lobbyPlayers: document.querySelector("#lobbyPlayers"),
+  lobbyHint: document.querySelector("#lobbyHint"),
+  actionHint: document.querySelector("#actionHint"),
+  settlementSheet: document.querySelector("#settlementSheet"),
+  settlementEvents: document.querySelector("#settlementEvents"),
 };
 
 els.apiBaseInput.value = state.apiBase;
 els.roomCodeInput.value = state.roomCode;
+els.continueRoomBtn.hidden = !(state.roomCode && state.playerId);
 
 function createDeck() {
   return suits.flatMap((suit) =>
@@ -311,16 +329,42 @@ function revealDealer() {
   render(false, true);
 }
 
+function setMode(mode) {
+  state.uiMode = mode;
+  els.entryScreen.classList.toggle("active", mode === "entry");
+  els.lobbyScreen.classList.toggle("active", mode === "lobby");
+  els.gameScreen.classList.toggle("active", mode === "table");
+}
+
+function modeFromStatus() {
+  if (!state.online) return state.uiMode;
+  if (state.status === "lobby") return "lobby";
+  return "table";
+}
+
 function render(animateCards = false, flipDealer = false) {
+  setMode(modeFromStatus());
+
+  if (state.uiMode === "entry") {
+    els.entryStatus.textContent = state.apiBase ? "在线服务已连接" : "请先设置后端地址";
+    els.continueRoomBtn.hidden = !(state.roomCode && state.playerId);
+    return;
+  }
+
+  renderLobby();
+
   const house = dealer();
+  if (!house) return;
+
   els.dealerArea.innerHTML = renderSeat(house, true, animateCards, flipDealer);
   const idlePlayers = state.players.filter((player) => !player.isDealer);
-  const viewer = idlePlayers.find((player) => player.id === state.viewerId);
+  const viewer = state.players.find((player) => player.id === state.viewerId);
   const otherPlayers = idlePlayers.filter((player) => player.id !== state.viewerId);
-  els.playersGrid.innerHTML = [viewer, ...otherPlayers]
+  els.playersGrid.innerHTML = otherPlayers
     .filter(Boolean)
     .map((player) => renderSeat(player, false, animateCards, false))
     .join("");
+  els.viewerArea.innerHTML = viewer ? renderViewerSeat(viewer, animateCards) : renderSpectatorSeat();
 
   const isViewerTurn = currentPlayer()?.id === state.viewerId && (state.status ? state.status === "player_turn" : !state.dealerRevealed);
   els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
@@ -333,13 +377,89 @@ function render(animateCards = false, flipDealer = false) {
       : currentPlayer()
         ? `等待 ${currentPlayer().name} 行动`
         : "等待开局";
-  els.revealBtn.disabled = state.online ? !["player_turn", "dealer_turn"].includes(state.status) : state.dealerRevealed;
+  const isViewerDealer = house.id === state.viewerId;
+  const canRevealDealer = state.online ? state.status === "dealer_turn" && isViewerDealer : !state.dealerRevealed;
+  els.revealBtn.disabled = !canRevealDealer;
   els.hitBtn.disabled = !isViewerTurn;
   els.standBtn.disabled = !isViewerTurn;
   els.hitBtn.textContent = isViewerTurn ? "要牌" : "等待中";
   els.standBtn.textContent = isViewerTurn ? "停牌" : "等待中";
   els.dealBtn.textContent = state.online && state.status === "lobby" ? "开始游戏" : "下一局";
-  els.connectionState.textContent = state.online ? `在线 · 房间 ${state.roomCode}` : "离线演示模式";
+  els.actionHint.textContent = getActionHint(isViewerTurn);
+  renderSettlement();
+}
+
+function renderLobby() {
+  if (!state.players?.length) return;
+  els.lobbyRoomCode.textContent = state.roomCode || state.code || "------";
+  els.playerCountLabel.textContent = `${state.players.length}/${state.maxPlayers || 5}`;
+  els.connectionState.textContent = state.status === "lobby" ? "等待开局" : getRoundLabel();
+  els.lobbyPlayers.innerHTML = state.players.map(renderLobbyPlayer).join("");
+  const canStart = state.players.length >= 3 && (state.status === "lobby" || state.status === "settlement");
+  els.dealBtn.disabled = !canStart;
+  els.dealBtn.textContent = state.status === "settlement" ? "下一局" : "开始游戏";
+  els.lobbyHint.textContent = canStart ? "准备好了就开始；新加入玩家下一局参与。" : "至少 3 人开始；可以先把房间号发给朋友。";
+}
+
+function renderLobbyPlayer(player) {
+  const initials = player.name.slice(0, 1);
+  const isViewer = player.id === state.viewerId;
+  const pending = state.status !== "lobby" && player.activeFromRound > state.round;
+  const stateLabel = pending ? "下一局加入" : player.isDealer ? "庄家" : "已入座";
+  return `
+    <article class="lobby-player ${isViewer ? "self" : ""}">
+      <span class="avatar">${initials}</span>
+      <div>
+        <strong>${isViewer ? "你" : player.name}</strong>
+        <small>${stateLabel}</small>
+      </div>
+      <span class="chips">${player.chips}</span>
+    </article>
+  `;
+}
+
+function renderViewerSeat(player, animateCards) {
+  const handHtml = player.hands.map((hand, index) => renderHand(hand, player, index, animateCards, false)).join("");
+  const role = player.isDealer ? "庄家" : getPlayerStateLabel(player);
+  return `
+    <article class="viewer-panel">
+      <div class="viewer-profile">
+        <span class="avatar">${player.name.slice(0, 1)}</span>
+        <div>
+          <strong>你</strong>
+          <small>${role} · 筹码 ${player.chips}</small>
+        </div>
+      </div>
+      <div class="viewer-hands">${handHtml}</div>
+    </article>
+  `;
+}
+
+function renderSpectatorSeat() {
+  return `
+    <article class="viewer-panel spectator-panel">
+      <strong>旁观中</strong>
+      <small>本局已开始，你将在下一局参与。</small>
+    </article>
+  `;
+}
+
+function getActionHint(isViewerTurn) {
+  if (state.status === "settlement") return "本局已结算";
+  if (state.status === "dealer_turn") return "庄家回合";
+  if (isViewerTurn) return "轮到你行动";
+  if (currentPlayer()) return `等待 ${currentPlayer().name} 行动`;
+  return "等待开局";
+}
+
+function renderSettlement() {
+  const visible = state.status === "settlement";
+  els.settlementSheet.classList.toggle("show", visible);
+  if (!visible) return;
+  els.settlementEvents.innerHTML = (state.logs || [])
+    .slice(0, 4)
+    .map((event) => `<p>${event}</p>`)
+    .join("");
 }
 
 function getRoundLabel() {
@@ -402,7 +522,7 @@ function renderHand(hand, player, handIndex, animateCards, flipDealer) {
   const isHouse = player.isDealer;
   const rank = reveal ? handRank(hand.cards) : { label: "", level: 0 };
   const visibleCards = hand.cards.map((card, index) => {
-    const hidden = !reveal || (isHouse && !state.dealerRevealed && index > 0);
+    const hidden = !reveal || (isHouse && player.id !== state.viewerId && !state.dealerRevealed && index > 0);
     return renderCard(card, hidden, animateCards, flipDealer && !hidden, rank.level > 0);
   });
   const score = reveal ? handScore(hand.cards) : `${hand.cards.length} 张牌`;
@@ -456,13 +576,16 @@ function applyOnlineSnapshot(payload) {
   state.playerId = payload.playerId || state.playerId;
   state.viewerId = state.playerId;
   state.roomCode = payload.room?.code || state.roomCode;
+  state.apiBase = normalizeApiBase(els.apiBaseInput.value || state.apiBase);
   localStorage.setItem("apiBase", normalizeApiBase(els.apiBaseInput.value || state.apiBase));
   localStorage.setItem("roomCode", state.roomCode);
   localStorage.setItem("playerId", state.playerId);
   Object.assign(state, payload.room);
   state.viewerId = state.playerId;
   state.logs = payload.room.events || [];
-  addLog(state.logs[0] || "房间状态已同步。");
+  if (els.latestEvent) {
+    els.latestEvent.textContent = state.logs[0] || "房间状态已同步。";
+  }
   render(true);
   startPolling();
 }
@@ -507,6 +630,31 @@ async function syncOnlineRoom() {
   }
 }
 
+async function continueOnlineRoom() {
+  if (!state.roomCode || !state.playerId) return;
+  state.online = true;
+  await syncOnlineRoom();
+}
+
+function leaveRoom() {
+  window.clearInterval(state.pollTimer);
+  state.online = false;
+  state.uiMode = "entry";
+  setMode("entry");
+  render();
+}
+
+async function copyRoomCode() {
+  const code = state.roomCode || state.code;
+  if (!code) return;
+  try {
+    await navigator.clipboard.writeText(code);
+    showToast("房间号已复制");
+  } catch {
+    showToast(`房间号 ${code}`);
+  }
+}
+
 function startPolling() {
   window.clearInterval(state.pollTimer);
   state.pollTimer = window.setInterval(syncOnlineRoom, 1800);
@@ -530,7 +678,12 @@ els.standBtn.addEventListener("click", stand);
 els.revealBtn.addEventListener("click", revealDealer);
 els.createRoomBtn.addEventListener("click", createOnlineRoom);
 els.joinRoomBtn.addEventListener("click", joinOnlineRoom);
+els.continueRoomBtn.addEventListener("click", continueOnlineRoom);
+els.leaveRoomBtn.addEventListener("click", leaveRoom);
+els.backToLobbyBtn.addEventListener("click", () => setMode("lobby"));
+els.copyRoomBtn.addEventListener("click", copyRoomCode);
+els.nextRoundBtn.addEventListener("click", resetRound);
 
 state.deck = shuffle(createDeck());
 state.round = 0;
-resetRound();
+render();

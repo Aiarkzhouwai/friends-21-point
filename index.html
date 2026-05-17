@@ -2,54 +2,94 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>21 点朋友局</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="app-shell">
-      <section class="room-panel" id="roomPanel" aria-label="房间连接">
-        <div>
-          <strong>在线房间</strong>
-          <span id="connectionState">离线演示模式</span>
+      <section class="screen entry-screen active" id="entryScreen" aria-label="房间入口">
+        <div class="entry-hero">
+          <span class="eyebrow">朋友局 · 在线房间</span>
+          <h1>21 点朋友局</h1>
+          <p>创建房间，发给朋友，凑齐后开局。</p>
         </div>
-        <label>
-          昵称
-          <input id="nicknameInput" maxlength="16" value="阿周" />
-        </label>
-        <label>
-          房间号
-          <input id="roomCodeInput" inputmode="numeric" maxlength="6" placeholder="输入 6 位房间号" />
-        </label>
-        <label>
-          后端地址
-          <input id="apiBaseInput" placeholder="例如 https://your-app.onrender.com" />
-        </label>
-        <div class="room-actions">
-          <button id="createRoomBtn" type="button">创建房间</button>
-          <button id="joinRoomBtn" type="button">加入房间</button>
+
+        <div class="entry-panel">
+          <label>
+            昵称
+            <input id="nicknameInput" maxlength="16" value="阿周" autocomplete="nickname" />
+          </label>
+
+          <button class="primary large" id="createRoomBtn" type="button">创建房间</button>
+
+          <div class="join-box">
+            <label>
+              房间号
+              <input id="roomCodeInput" inputmode="numeric" maxlength="6" placeholder="输入 6 位房间号" />
+            </label>
+            <button id="joinRoomBtn" type="button">加入房间</button>
+          </div>
+
+          <button class="ghost" id="continueRoomBtn" type="button">继续上次房间</button>
+
+          <details class="advanced-settings">
+            <summary>连接设置</summary>
+            <label>
+              后端地址
+              <input id="apiBaseInput" placeholder="例如 https://your-app.onrender.com" />
+            </label>
+          </details>
+        </div>
+
+        <p class="service-line" id="entryStatus">在线服务已连接</p>
+      </section>
+
+      <section class="screen lobby-screen" id="lobbyScreen" aria-label="房间等待">
+        <header class="lobby-header">
+          <button class="icon-btn" id="leaveRoomBtn" type="button" aria-label="返回入口">‹</button>
+          <div>
+            <span class="eyebrow">房间号</span>
+            <strong id="lobbyRoomCode">------</strong>
+          </div>
+          <button class="copy-btn" id="copyRoomBtn" type="button">复制</button>
+        </header>
+
+        <section class="lobby-card">
+          <div class="lobby-card-head">
+            <div>
+              <span class="eyebrow">玩家</span>
+              <h2 id="playerCountLabel">1/5</h2>
+            </div>
+            <span class="status-pill" id="connectionState">等待开局</span>
+          </div>
+          <div class="lobby-players" id="lobbyPlayers"></div>
+        </section>
+
+        <section class="rule-strip" aria-label="桌规">
+          <span>下注 10-50</span>
+          <span>≤13 必须要牌</span>
+          <span>21 点 x2</span>
+          <span>一对 A x3</span>
+          <span>五小牛 x5</span>
+        </section>
+
+        <div class="lobby-action">
+          <button class="primary large" id="dealBtn" type="button">开始游戏</button>
+          <p id="lobbyHint">至少 3 人开始；中途加入下一局参与。</p>
         </div>
       </section>
 
-      <section class="table-area" aria-label="21 点牌桌">
-        <header class="topbar">
-          <div class="nav-cluster">
-            <button class="icon-btn" type="button" aria-label="返回">‹</button>
-            <button class="icon-btn" type="button" aria-label="菜单">☰</button>
-          </div>
+      <section class="screen game-screen" id="gameScreen" aria-label="21 点牌桌">
+        <header class="table-topbar">
+          <button class="icon-btn" id="backToLobbyBtn" type="button" aria-label="返回房间">‹</button>
           <div class="room-title">
-            <h1>朋友局 21 点</h1>
-            <p>房间号：4862 · 轮庄桌 10/50</p>
+            <strong>朋友局 21 点</strong>
+            <span id="roundLabel">第 1 局 · 闲家回合</span>
           </div>
-          <div class="room-meta">
-            <span>4/5 人</span>
+          <div class="table-counters">
             <span id="deckCount">牌库 52</span>
-            <span>底注 10</span>
-          </div>
-          <div class="nav-cluster right">
-            <button class="icon-btn" type="button" aria-label="战绩">♕</button>
-            <button class="icon-btn" type="button" aria-label="设置">⚙</button>
-            <button class="icon-btn" type="button" aria-label="更多">•••</button>
+            <span id="discardCount">已用 0</span>
           </div>
         </header>
 
@@ -57,21 +97,14 @@
           <div class="table-felt" aria-hidden="true">
             <div class="table-rail"></div>
             <div class="table-center">
-              <div class="deck-zone">
-                <div class="deck-stack" id="deckStack">
-                  <div class="card back mini"></div>
-                  <div class="card back mini"></div>
-                  <div class="card back mini"></div>
-                </div>
-                <div class="discard-pill" id="discardCount">已用 0</div>
+              <div class="deck-stack" id="deckStack">
+                <div class="card back mini"></div>
+                <div class="card back mini"></div>
+                <div class="card back mini"></div>
               </div>
               <div class="center-status">
-                <p id="roundLabel">第 1 局 · 闲家回合</p>
-                <strong id="turnLabel">阿周行动中</strong>
+                <strong id="turnLabel">等待开局</strong>
                 <span id="latestEvent">等待玩家操作</span>
-              </div>
-              <div class="chip-pot" aria-hidden="true">
-                <span></span><span></span><span></span><span></span><span></span>
               </div>
             </div>
           </div>
@@ -80,23 +113,25 @@
           <div id="playersGrid"></div>
         </section>
 
-        <aside class="quick-rail" aria-label="快捷入口">
-          <button type="button">商城</button>
-          <button type="button">任务</button>
-          <button type="button">排行</button>
-        </aside>
+        <section class="my-zone" id="viewerArea" aria-label="我的手牌"></section>
 
         <div class="action-panel">
-          <button class="danger" id="standBtn" type="button">停牌</button>
-          <button class="primary" id="hitBtn" type="button">要牌</button>
-          <button class="success" id="revealBtn" type="button">亮庄家牌</button>
-          <div class="bet-widget">
-            <span>下注</span>
-            <strong>20</strong>
-            <span>10-50</span>
+          <div class="turn-note" id="actionHint">等待其他玩家</div>
+          <div class="action-buttons">
+            <button class="danger" id="standBtn" type="button">停牌</button>
+            <button class="primary" id="hitBtn" type="button">要牌</button>
+            <button class="success" id="revealBtn" type="button">亮庄家牌</button>
           </div>
-          <button id="dealBtn" type="button">重新发牌</button>
         </div>
+
+        <section class="settlement-sheet" id="settlementSheet" aria-label="本局结算">
+          <div>
+            <span class="eyebrow">本局结束</span>
+            <h2>结算完成</h2>
+          </div>
+          <div class="settlement-events" id="settlementEvents"></div>
+          <button class="primary large" id="nextRoundBtn" type="button">下一局</button>
+        </section>
       </section>
     </main>
 
