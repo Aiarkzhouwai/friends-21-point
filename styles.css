@@ -491,27 +491,36 @@ label {
 
 .avatar {
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: 34px;
+  height: 34px;
   place-items: center;
   flex: 0 0 auto;
-  border: 2px solid rgba(245, 200, 95, 0.78);
-  border-radius: 50%;
-  color: #271802;
-  background:
-    radial-gradient(circle at 36% 28%, rgba(255, 255, 255, 0.72), transparent 22%),
-    linear-gradient(145deg, #ffd76f, #b96e20);
+  border: 1px solid rgba(245, 200, 95, 0.58);
+  border-radius: 8px;
+  background: rgba(8, 12, 18, 0.94);
   box-shadow:
-    inset 0 0 0 3px rgba(0, 0, 0, 0.28),
-    0 10px 24px rgba(0, 0, 0, 0.38);
-  font-size: 18px;
-  font-weight: 950;
+    inset 0 0 0 2px rgba(255, 255, 255, 0.06),
+    0 8px 18px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+}
+
+.pixel-avatar {
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(7, 1fr);
+  gap: 0;
+  padding: 4px;
+}
+
+.pixel-avatar i {
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
 }
 
 .profile-card {
   display: grid;
   min-width: 78px;
-  margin-left: -7px;
+  margin-left: -4px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 7px;
   padding: 6px 7px 6px 11px;
@@ -1143,14 +1152,13 @@ label {
   }
 
   .avatar {
-    width: 62px;
-    height: 62px;
-    font-size: 22px;
+    width: 44px;
+    height: 44px;
   }
 
   .profile-card {
     min-width: 116px;
-    padding: 8px 10px 8px 16px;
+    padding: 8px 10px 8px 13px;
   }
 
   .profile-main strong {

@@ -190,6 +190,46 @@ function timeLeftLabel() {
   return `${seconds}s`;
 }
 
+function hashString(value) {
+  return String(value || "")
+    .split("")
+    .reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
+}
+
+function renderAvatar(player) {
+  const seed = hashString(player.id || player.name);
+  const palettes = [
+    ["#ffd76f", "#8b4dff", "#1f2a44", "#f7f1d8"],
+    ["#7ee787", "#0d6f4a", "#20253a", "#f4d1b2"],
+    ["#79c0ff", "#1f6feb", "#1b2237", "#ffe2a8"],
+    ["#ff9b96", "#b4233a", "#22263a", "#f8d6bb"],
+    ["#d2a8ff", "#6f42c1", "#202034", "#ffd9c0"],
+  ];
+  const palette = palettes[seed % palettes.length];
+  const cells = [];
+  for (let row = 0; row < 7; row += 1) {
+    for (let col = 0; col < 7; col += 1) {
+      let color = "transparent";
+      const mirrorCol = col > 3 ? 6 - col : col;
+      const edge = row === 0 || row === 6 || col === 0 || col === 6;
+      if (edge && row > 0 && row < 6 && col > 0 && col < 6) color = palette[2];
+      if (row >= 1 && row <= 5 && mirrorCol >= 1) color = palette[3];
+      if ((row === 1 && mirrorCol >= 1) || (row === 2 && mirrorCol === 1)) color = palette[0];
+      if ((row === 3 && (col === 2 || col === 4)) || (row === 5 && col >= 2 && col <= 4)) color = palette[2];
+      if (((seed >> (row + mirrorCol)) & 1) && row >= 2 && row <= 4 && mirrorCol === 3) color = palette[1];
+      cells.push(`<i style="background:${color}"></i>`);
+    }
+  }
+  return `<span class="avatar pixel-avatar" aria-hidden="true">${cells.join("")}</span>`;
+}
+
+function formatChips(value, withCurrency = false) {
+  const number = Number(value) || 0;
+  const sign = number < 0 ? "-" : number > 0 && !withCurrency ? "+" : "";
+  const body = withCurrency ? `${Math.abs(number).toFixed(2)}` : `${Math.abs(number)}`;
+  return `${sign}${withCurrency ? "$" : ""}${body}`;
+}
+
 function resetRound() {
   if (state.online) {
     sendAction("start_round");
@@ -511,19 +551,18 @@ function renderRuleStrip() {
 }
 
 function renderLobbyPlayer(player) {
-  const initials = player.name.slice(0, 1);
   const isViewer = player.id === state.viewerId;
   const pending = state.status !== "lobby" && player.activeFromRound > state.round;
   const stateLabel = pending ? "下一局加入" : player.isDealer ? "庄家" : "已入座";
   const nextDealer = state.nextDealerId === player.id ? " · 下局庄" : "";
   return `
     <article class="lobby-player ${isViewer ? "self" : ""}">
-      <span class="avatar">${initials}</span>
+      ${renderAvatar(player)}
       <div>
         <strong>${isViewer ? "你" : player.name}</strong>
         <small>${stateLabel}${nextDealer}</small>
       </div>
-      <span class="chips">${player.chips}</span>
+      <span class="chips">${formatChips(player.chips)}</span>
     </article>
   `;
 }
@@ -537,10 +576,10 @@ function renderViewerSeat(player, animateCards) {
   return `
     <article class="viewer-panel">
       <div class="viewer-profile">
-        <span class="avatar">${player.name.slice(0, 1)}</span>
+        ${renderAvatar(player)}
         <div>
           <strong>你</strong>
-          <small>${role} · 筹码 ${player.chips}${betTotal ? ` · 本局下注 ${betTotal}` : ""}</small>
+          <small>${role} · 筹码 ${formatChips(player.chips)}${betTotal ? ` · 本局下注 ${betTotal}` : ""}</small>
         </div>
       </div>
       <div class="viewer-hands">${handHtml}</div>
@@ -666,8 +705,6 @@ function renderSeat(player, isHouse, animateCards, flipDealer) {
   const seatClass = isHouse
     ? `seat-position dealer-position compact-seat dealer-card ${isShowdownFocus ? "showdown-focus" : ""}`
     : `seat-position player-seat seat-${seatIndex} ${isViewer ? "viewer-seat" : "compact-seat"} ${active ? "active" : ""} ${busted ? "busted" : ""} ${isShowdownFocus ? "showdown-focus" : ""}`;
-  const chips = player.chips >= 0 ? `+${player.chips}` : player.chips;
-  const initials = player.name.slice(0, 1);
   const actionState = getPlayerStateLabel(player);
   const displayName = isViewer ? "You" : player.name;
   const badge = player.isDealer ? '<span class="dealer-badge">庄</span>' : "";
@@ -676,13 +713,13 @@ function renderSeat(player, isHouse, animateCards, flipDealer) {
     <article class="${seatClass}">
       ${player.hands.map((hand, index) => renderHand(hand, player, index, animateCards, flipDealer)).join("")}
       <div class="profile-row">
-        <span class="avatar">${initials}</span>
+        ${renderAvatar(player)}
         <div class="profile-card">
           <div class="profile-main">
             <strong>${displayName}</strong>
             ${badge}
           </div>
-          <span class="chips">$${Math.abs(player.chips).toFixed(2)}</span>
+          <span class="chips">${formatChips(player.chips, true)}</span>
           ${betTotal ? `<span class="bet-chip">下注 ${betTotal}</span>` : ""}
           <small>${actionState}</small>
         </div>
