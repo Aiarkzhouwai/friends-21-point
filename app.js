@@ -16,6 +16,9 @@ const state = {
     showPanel: false,
     timer: null,
   },
+  currentDealerId: "",
+  dealerChangeId: "",
+  dealerChangeTimer: null,
   round: 1,
   deck: [],
   used: [],
@@ -190,6 +193,16 @@ function timeLeftLabel() {
   return `${seconds}s`;
 }
 
+function gameCountdownLabel() {
+  const minutes = Number(state.settings?.timeLimitMinutes || 0);
+  if (!minutes || !state.startedAt) return "";
+  const remaining = Math.max(0, state.startedAt + minutes * 60 * 1000 - Date.now());
+  const totalSeconds = Math.ceil(remaining / 1000);
+  const mm = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const ss = String(totalSeconds % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+
 function activeHandLabel() {
   const player = currentPlayer();
   if (!player || player.hands.length <= 1) return "";
@@ -285,6 +298,10 @@ function showToast(message) {
 
 function hit() {
   if (state.online) {
+    if (state.status === "dealer_prepare") {
+      sendAction("deal_shuffle");
+      return;
+    }
     sendAction("hit");
     return;
   }
@@ -317,6 +334,10 @@ function hit() {
 
 function stand() {
   if (state.online) {
+    if (state.status === "dealer_prepare") {
+      sendAction("deal_keep");
+      return;
+    }
     sendAction("stand");
     return;
   }
@@ -443,6 +464,7 @@ function render(animateCards = false, flipDealer = false) {
 
   const isViewerTurn = currentPlayer()?.id === state.viewerId && (state.status ? state.status === "player_turn" : !state.dealerRevealed);
   const isViewerDealerTurn = house.id === state.viewerId && state.status === "dealer_turn";
+  const isViewerDealerPrepare = house.id === state.viewerId && state.status === "dealer_prepare";
   const isViewerBetting = state.status === "betting" && viewer && !viewer.isDealer && viewer.activeFromRound <= state.round;
   const viewerBetConfirmed = Boolean(viewer?.hands?.[0]?.betConfirmed);
   const viewerHand = currentViewerHand(viewer);
@@ -451,7 +473,8 @@ function render(animateCards = false, flipDealer = false) {
   const left = timeLeftLabel();
   els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
   els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
-  els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}`;
+  const countdown = gameCountdownLabel();
+  els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}${countdown ? ` · 剩 ${countdown}` : ""}`;
   const handLabel = activeHandLabel();
   els.turnLabel.textContent = state.status === "settlement"
     ? state.showdown.showPanel
@@ -459,6 +482,10 @@ function render(animateCards = false, flipDealer = false) {
       : "逐家比牌中"
     : state.status === "betting"
     ? "等待闲家下注"
+    : state.status === "dealer_prepare"
+    ? isViewerDealerPrepare
+      ? "下注完成，等待你决定是否洗牌"
+      : "下注完成，等待庄家发牌"
     : state.status === "dealer_turn"
     ? isViewerDealerTurn
       ? `庄家回合，${handLabel ? `${handLabel} · ` : ""}等待你决策${left ? ` · ${left}` : ""}`
@@ -471,16 +498,22 @@ function render(animateCards = false, flipDealer = false) {
   const isViewerDealer = house.id === state.viewerId;
   const canRevealDealer = state.online ? false : !state.dealerRevealed;
   els.revealBtn.disabled = !canRevealDealer;
-  els.hitBtn.disabled = !(isViewerTurn || isViewerDealerTurn);
-  els.standBtn.disabled = !(isViewerTurn || isViewerDealerTurn) || mustHit;
+  els.hitBtn.disabled = !(isViewerTurn || isViewerDealerTurn || isViewerDealerPrepare);
+  els.standBtn.disabled = isViewerDealerPrepare ? false : !(isViewerTurn || isViewerDealerTurn) || mustHit;
   els.splitBtn.disabled = !(isViewerTurn || isViewerDealerTurn) || !canSplit;
-  els.hitBtn.textContent = isViewerTurn || isViewerDealerTurn ? "要！" : "等待中";
-  els.standBtn.textContent = (isViewerTurn || isViewerDealerTurn) && mustHit ? "必须要" : isViewerTurn || isViewerDealerTurn ? "不要了" : "等待中";
+  els.hitBtn.textContent = isViewerDealerPrepare ? "洗牌发牌" : isViewerTurn || isViewerDealerTurn ? "要！" : "等待中";
+  els.standBtn.textContent = isViewerDealerPrepare
+    ? "直接发牌"
+    : (isViewerTurn || isViewerDealerTurn) && mustHit
+      ? "必须要"
+      : isViewerTurn || isViewerDealerTurn
+        ? "不要了"
+        : "等待中";
   els.splitBtn.textContent = canSplit ? "分牌" : "不可分牌";
   els.revealBtn.textContent = state.status === "dealer_turn" ? "庄家决策中" : "亮庄家牌";
   els.dealBtn.textContent = state.online && state.status === "lobby" ? "开始游戏" : "下一局";
   renderBetPanel(isViewerBetting, viewerBetConfirmed, viewerHand?.bet || 20);
-  els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn, isViewerBetting, viewerBetConfirmed);
+  els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn, isViewerBetting, viewerBetConfirmed, isViewerDealerPrepare);
   renderShowdownBanner();
   renderSettlement();
 }
@@ -547,13 +580,14 @@ function renderRuleStrip() {
   const timeout = settings.actionTimeoutSeconds || 30;
   const roundLimit = settings.roundLimit ? `${settings.roundLimit} 局结束` : "不限局数";
   const timeLimit = settings.timeLimitMinutes ? `${settings.timeLimitMinutes} 分钟结束` : "不限时间";
+  const countdown = gameCountdownLabel();
   els.ruleStrip.innerHTML = [
     `下注 ${minBet}-${maxBet}`,
     `≤13 自动要牌`,
     `${timeout}s 超时托管`,
     "可分牌，不可再分",
     "庄爆换下一庄",
-    `${roundLimit} · ${timeLimit}`,
+    countdown ? `总倒计时 ${countdown}` : `${roundLimit} · ${timeLimit}`,
   ].map((item) => `<span>${item}</span>`).join("");
 }
 
@@ -619,7 +653,7 @@ function renderBetPanel(isViewerBetting, viewerBetConfirmed, currentBet) {
   });
 }
 
-function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting = false, viewerBetConfirmed = false) {
+function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting = false, viewerBetConfirmed = false, isViewerDealerPrepare = false) {
   const left = timeLeftLabel();
   const timer = left ? ` · ${left}` : "";
   const hand = activeHandLabel();
@@ -627,6 +661,8 @@ function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting
   if (state.status === "settlement") return state.gameOverReason || "本局已结算";
   if (isViewerBetting) return viewerBetConfirmed ? "已确认下注，等待其他闲家" : "请选择本局下注";
   if (state.status === "betting") return "等待闲家下注";
+  if (isViewerDealerPrepare) return "下注完成：你可以洗牌后发牌，或沿用当前牌库直接发牌";
+  if (state.status === "dealer_prepare") return "下注完成，等待庄家选择是否洗牌";
   if (isViewerDealerTurn) return `${handText}庄家回合：你可以要、不要了，或对子分牌${timer}`;
   if (state.status === "dealer_turn") return `${handText}庄家牌已亮，等待庄家决策${timer}`;
   if (isViewerTurn) return `${handText}轮到你行动${timer}`;
@@ -667,9 +703,24 @@ function renderSettlement() {
       </article>
     `);
   }
+  rows.push(renderScoreboard());
   els.settlementEvents.innerHTML = rows.length
     ? rows.join("")
     : (state.logs || []).slice(0, 4).map((event) => `<p>${event}</p>`).join("");
+}
+
+function renderScoreboard() {
+  const players = [...(state.players || [])].sort((a, b) => b.chips - a.chips);
+  const rows = players.map((player, index) => {
+    const score = formatChips(player.chips);
+    return `<li><span>${index + 1}. ${player.id === state.viewerId ? "你" : player.name}${player.isDealer ? " · 庄" : ""}</span><strong>${score}</strong></li>`;
+  }).join("");
+  return `
+    <article class="scoreboard-panel">
+      <strong>本场总分</strong>
+      <ul>${rows}</ul>
+    </article>
+  `;
 }
 
 function currentShowdownStep() {
@@ -696,6 +747,7 @@ function renderShowdownBanner() {
 function getRoundLabel() {
   if (state.status === "lobby") return "等待开局";
   if (state.status === "betting") return "下注中";
+  if (state.status === "dealer_prepare") return "庄家发牌";
   if (state.status === "settlement") return "结算完成";
   if (state.status === "dealer_turn") return "庄家回合";
   if (state.status === "player_turn") return "闲家回合";
@@ -712,14 +764,15 @@ function renderSeat(player, isHouse, animateCards, flipDealer) {
   const isShowdownFocus = showdownStep && (player.id === showdownStep.playerId || player.id === showdownStep.dealerId);
   const resultBadge = showdownStep && player.id === showdownStep.playerId ? renderResultBadge(showdownStep) : "";
   const seatClass = isHouse
-    ? `seat-position dealer-position compact-seat dealer-card ${isShowdownFocus ? "showdown-focus" : ""}`
+    ? `seat-position dealer-position compact-seat dealer-card ${active ? "active" : ""} ${isShowdownFocus ? "showdown-focus" : ""}`
     : `seat-position player-seat seat-${seatIndex} ${isViewer ? "viewer-seat" : "compact-seat"} ${active ? "active" : ""} ${busted ? "busted" : ""} ${isShowdownFocus ? "showdown-focus" : ""}`;
   const actionState = getPlayerStateLabel(player);
   const displayName = isViewer ? "You" : player.name;
-  const badge = player.isDealer ? '<span class="dealer-badge">庄</span>' : "";
+  const badge = player.isDealer ? '<span class="dealer-badge dealer-crown" aria-label="庄家"></span>' : "";
   const betTotal = player.isDealer ? 0 : player.hands.reduce((sum, hand) => sum + (hand.bet || 0), 0);
+  const dealerChanged = state.dealerChangeId === player.id ? " dealer-changed" : "";
   return `
-    <article class="${seatClass}">
+    <article class="${seatClass}${dealerChanged}">
       ${player.hands.map((hand, index) => renderHand(hand, player, index, animateCards, flipDealer)).join("")}
       <div class="profile-row">
         ${renderAvatar(player)}
@@ -839,6 +892,8 @@ async function apiRequest(path, options = {}) {
 }
 
 function applyOnlineSnapshot(payload, options = {}) {
+  const oldDealerId = state.currentDealerId || state.players?.find((player) => player.isDealer)?.id || "";
+  const newDealerId = payload.room?.players?.find((player) => player.isDealer)?.id || "";
   state.online = true;
   state.playerId = payload.playerId || state.playerId;
   state.viewerId = state.playerId;
@@ -849,6 +904,15 @@ function applyOnlineSnapshot(payload, options = {}) {
   localStorage.setItem("playerId", state.playerId);
   Object.assign(state, payload.room);
   state.viewerId = state.playerId;
+  if (oldDealerId && newDealerId && oldDealerId !== newDealerId) {
+    state.dealerChangeId = newDealerId;
+    window.clearTimeout(state.dealerChangeTimer);
+    state.dealerChangeTimer = window.setTimeout(() => {
+      state.dealerChangeId = "";
+      render(false);
+    }, 2000);
+  }
+  state.currentDealerId = newDealerId;
   state.logs = payload.room.events || [];
   if (els.latestEvent) {
     els.latestEvent.textContent = state.logs[0] || "房间状态已同步。";

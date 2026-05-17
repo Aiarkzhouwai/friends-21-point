@@ -296,6 +296,11 @@ function startRound(room) {
 }
 
 function dealInitialCards(room) {
+  if (room.deck.length < activePlayers(room).length * 2) {
+    room.deck = shuffle([...room.deck, ...room.used]);
+    room.used = [];
+    room.events.unshift("牌库不足，系统已把用过的牌洗回牌库。");
+  }
   for (let pass = 0; pass < 2; pass += 1) {
     activePlayers(room).forEach((player) => {
       player.hands[0].cards.push(drawCard(room));
@@ -308,6 +313,20 @@ function dealInitialCards(room) {
   setTurnDeadline(room);
   room.events.unshift("下注完成，开始发牌。");
   room.updatedAt = Date.now();
+}
+
+function prepareDeal(room, player, shouldShuffle = false) {
+  const house = dealer(room);
+  if (room.status !== "dealer_prepare") throw new Error("当前不是庄家发牌准备阶段");
+  if (player.id !== house.id) throw new Error("只有庄家可以选择是否洗牌");
+  if (shouldShuffle) {
+    room.deck = shuffle([...room.deck, ...room.used]);
+    room.used = [];
+    room.events.unshift("庄家选择洗牌后发牌。");
+  } else {
+    room.events.unshift("庄家选择不洗牌，直接发牌。");
+  }
+  dealInitialCards(room);
 }
 
 function normalizeBet(room, value) {
@@ -328,7 +347,12 @@ function placeBet(room, player, betValue) {
   hand.betConfirmed = true;
   room.events.unshift(`${player.nickname} 下注 ${hand.bet}。`);
   if (idlePlayers(room).every((item) => item.hands[0]?.betConfirmed)) {
-    dealInitialCards(room);
+    room.status = "dealer_prepare";
+    room.currentTurnPlayerId = dealer(room).id;
+    room.currentHandIndex = 0;
+    room.turnDeadlineAt = null;
+    room.events.unshift("下注完成，等待庄家选择是否洗牌。");
+    room.updatedAt = Date.now();
     return;
   }
   room.updatedAt = Date.now();
@@ -608,6 +632,7 @@ function visibleRoom(room, viewerId) {
     round: room.round,
     status: room.status,
     gameOverReason: room.gameOverReason,
+    startedAt: room.startedAt,
     dealerRevealed: room.dealerRevealed,
     currentTurnPlayerId: room.currentTurnPlayerId,
     currentHandIndex: room.currentHandIndex,
@@ -702,6 +727,8 @@ async function handle(req, res) {
       else if (body.type === "hit") hit(room, player);
       else if (body.type === "stand") stand(room, player);
       else if (body.type === "split") split(room, player);
+      else if (body.type === "deal_keep") prepareDeal(room, player, false);
+      else if (body.type === "deal_shuffle") prepareDeal(room, player, true);
       else if (body.type === "reveal_dealer") startDealerTurn(room);
       else throw new Error("未知操作");
       return json(res, 200, { room: visibleRoom(room, player.id), playerId: player.id });
