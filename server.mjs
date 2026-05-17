@@ -5,6 +5,9 @@ const PORT = Number(process.env.PORT || 8787);
 const rooms = new Map();
 const suits = ["♠", "♥", "♣", "♦"];
 const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const BET_MIN = 10;
+const BET_MAX = 50;
+const BET_STEP = 10;
 
 function json(res, status, data) {
   const body = JSON.stringify(data);
@@ -170,20 +173,50 @@ function startRound(room) {
     room.used = [];
   }
   room.round += 1;
-  room.status = "player_turn";
+  room.status = "betting";
   room.dealerRevealed = false;
+  room.currentTurnPlayerId = null;
   activePlayers(room).forEach((player) => {
-    player.hands = [{ cards: [], bet: player.isDealer ? 0 : 20, stood: false, busted: false }];
+    player.hands = [{ cards: [], bet: player.isDealer ? 0 : 20, betConfirmed: player.isDealer, stood: false, busted: false }];
   });
+  room.events.unshift(`第 ${room.round} 局开始，等待闲家下注。`);
+  room.settlements = [];
+  room.updatedAt = Date.now();
+}
+
+function dealInitialCards(room) {
   for (let pass = 0; pass < 2; pass += 1) {
     activePlayers(room).forEach((player) => {
       player.hands[0].cards.push(drawCard(room));
     });
   }
+  room.status = "player_turn";
   const first = idlePlayers(room)[0];
   room.currentTurnPlayerId = first?.id || null;
-  room.events.unshift(`第 ${room.round} 局开始。`);
-  room.settlements = [];
+  room.events.unshift("下注完成，开始发牌。");
+  room.updatedAt = Date.now();
+}
+
+function normalizeBet(value) {
+  const bet = Number(value);
+  if (!Number.isFinite(bet) || bet < BET_MIN || bet > BET_MAX || bet % BET_STEP !== 0) {
+    throw new Error(`下注必须是 ${BET_MIN}-${BET_MAX}，并按 ${BET_STEP} 递增`);
+  }
+  return bet;
+}
+
+function placeBet(room, player, betValue) {
+  if (room.status !== "betting") throw new Error("当前不是下注阶段");
+  if (player.isDealer) throw new Error("庄家不需要下注");
+  if (player.activeFromRound > room.round) throw new Error("你将在下一局参与");
+  const hand = player.hands[0];
+  hand.bet = normalizeBet(betValue);
+  hand.betConfirmed = true;
+  room.events.unshift(`${player.nickname} 下注 ${hand.bet}。`);
+  if (idlePlayers(room).every((item) => item.hands[0]?.betConfirmed)) {
+    dealInitialCards(room);
+    return;
+  }
   room.updatedAt = Date.now();
 }
 
@@ -356,6 +389,7 @@ function visibleRoom(room, viewerId) {
         activeFromRound: player.activeFromRound,
         hands: player.hands.map((hand) => ({
           bet: hand.bet,
+          betConfirmed: Boolean(hand.betConfirmed),
           stood: hand.stood,
           busted: hand.busted,
           cards: hand.cards.map((card, index) => (canSeeCard(hand, index) ? publicCard(card) : { hidden: true })),
@@ -410,6 +444,7 @@ async function handle(req, res) {
       const body = await readBody(req);
       const player = findPlayer(room, body.playerId);
       if (body.type === "start_round") startRound(room);
+      else if (body.type === "place_bet") placeBet(room, player, body.bet);
       else if (body.type === "hit") hit(room, player);
       else if (body.type === "stand") stand(room, player);
       else if (body.type === "reveal_dealer") startDealerTurn(room);

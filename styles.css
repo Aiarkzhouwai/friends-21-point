@@ -708,10 +708,53 @@ label {
   gap: 8px;
 }
 
+.action-buttons.hidden {
+  display: none;
+}
+
 .action-buttons button {
   min-height: 56px;
   padding: 0 8px;
   font-size: 16px;
+}
+
+.bet-panel {
+  display: none;
+  gap: 8px;
+}
+
+.bet-panel.show {
+  display: grid;
+}
+
+.bet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.bet-head strong {
+  color: #ffe58b;
+  font-size: 26px;
+}
+
+.bet-options {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.bet-options button {
+  min-height: 44px;
+  padding: 0;
+}
+
+.bet-options button.selected {
+  border-color: rgba(245, 200, 95, 0.76);
+  color: #1a1102;
+  background: linear-gradient(#ffe48e, #d99a30);
 }
 
 .settlement-sheet {

@@ -9,6 +9,7 @@ const state = {
   roomCode: localStorage.getItem("roomCode") || "",
   playerId: localStorage.getItem("playerId") || "",
   pollTimer: null,
+  selectedBet: 20,
   round: 1,
   deck: [],
   used: [],
@@ -82,6 +83,10 @@ const els = {
   lobbyPlayers: document.querySelector("#lobbyPlayers"),
   lobbyHint: document.querySelector("#lobbyHint"),
   actionHint: document.querySelector("#actionHint"),
+  betPanel: document.querySelector("#betPanel"),
+  betAmountLabel: document.querySelector("#betAmountLabel"),
+  betOptions: document.querySelector("#betOptions"),
+  confirmBetBtn: document.querySelector("#confirmBetBtn"),
   settlementSheet: document.querySelector("#settlementSheet"),
   settlementEvents: document.querySelector("#settlementEvents"),
 };
@@ -368,12 +373,16 @@ function render(animateCards = false, flipDealer = false) {
 
   const isViewerTurn = currentPlayer()?.id === state.viewerId && (state.status ? state.status === "player_turn" : !state.dealerRevealed);
   const isViewerDealerTurn = house.id === state.viewerId && state.status === "dealer_turn";
+  const isViewerBetting = state.status === "betting" && viewer && !viewer.isDealer && viewer.activeFromRound <= state.round;
+  const viewerBetConfirmed = Boolean(viewer?.hands?.[0]?.betConfirmed);
   const viewerHand = viewer?.hands?.[0];
   const mustHit = viewerHand ? handScore(viewerHand.cards) <= 13 : false;
   els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
   els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
   els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}`;
-  els.turnLabel.textContent = state.status === "dealer_turn"
+  els.turnLabel.textContent = state.status === "betting"
+    ? "等待闲家下注"
+    : state.status === "dealer_turn"
     ? isViewerDealerTurn
       ? "庄家回合，等待你决策"
       : "庄家牌已亮，等待庄家决策"
@@ -391,7 +400,8 @@ function render(animateCards = false, flipDealer = false) {
   els.standBtn.textContent = (isViewerTurn || isViewerDealerTurn) && mustHit ? "必须要" : isViewerTurn || isViewerDealerTurn ? "不要了" : "等待中";
   els.revealBtn.textContent = state.status === "dealer_turn" ? "庄家决策中" : "亮庄家牌";
   els.dealBtn.textContent = state.online && state.status === "lobby" ? "开始游戏" : "下一局";
-  els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn);
+  renderBetPanel(isViewerBetting, viewerBetConfirmed, viewerHand?.bet || 20);
+  els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn, isViewerBetting, viewerBetConfirmed);
   renderSettlement();
 }
 
@@ -450,8 +460,25 @@ function renderSpectatorSeat() {
   `;
 }
 
-function getActionHint(isViewerTurn, isViewerDealerTurn = false) {
+function renderBetPanel(isViewerBetting, viewerBetConfirmed, currentBet) {
+  els.betPanel.classList.toggle("show", isViewerBetting);
+  document.querySelector(".action-buttons").classList.toggle("hidden", isViewerBetting);
+  if (!isViewerBetting) return;
+  if (!state.selectedBet || viewerBetConfirmed) state.selectedBet = currentBet;
+  els.betAmountLabel.textContent = state.selectedBet;
+  els.confirmBetBtn.disabled = viewerBetConfirmed;
+  els.confirmBetBtn.textContent = viewerBetConfirmed ? `已下注 ${currentBet}` : "确认下注";
+  [...els.betOptions.querySelectorAll("button")].forEach((button) => {
+    const selected = Number(button.dataset.bet) === Number(state.selectedBet);
+    button.classList.toggle("selected", selected);
+    button.disabled = viewerBetConfirmed;
+  });
+}
+
+function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting = false, viewerBetConfirmed = false) {
   if (state.status === "settlement") return "本局已结算";
+  if (isViewerBetting) return viewerBetConfirmed ? "已确认下注，等待其他闲家" : "请选择本局下注";
+  if (state.status === "betting") return "等待闲家下注";
   if (isViewerDealerTurn) return "庄家回合：你可以要，或不要了";
   if (state.status === "dealer_turn") return "庄家牌已亮，等待庄家决策";
   if (isViewerTurn) return "轮到你行动";
@@ -497,6 +524,7 @@ function renderSettlement() {
 
 function getRoundLabel() {
   if (state.status === "lobby") return "等待开局";
+  if (state.status === "betting") return "下注中";
   if (state.status === "settlement") return "结算完成";
   if (state.status === "dealer_turn") return "庄家回合";
   if (state.status === "player_turn") return "闲家回合";
@@ -710,6 +738,25 @@ async function sendAction(type) {
   }
 }
 
+function selectBet(event) {
+  const button = event.target.closest("button[data-bet]");
+  if (!button) return;
+  state.selectedBet = Number(button.dataset.bet);
+  render(false);
+}
+
+async function confirmBet() {
+  try {
+    const payload = await apiRequest(`/api/rooms/${state.roomCode}/action`, {
+      method: "POST",
+      body: JSON.stringify({ playerId: state.playerId, type: "place_bet", bet: state.selectedBet }),
+    });
+    applyOnlineSnapshot(payload, { animate: true });
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 els.dealBtn.addEventListener("click", resetRound);
 els.hitBtn.addEventListener("click", hit);
 els.standBtn.addEventListener("click", stand);
@@ -721,6 +768,8 @@ els.leaveRoomBtn.addEventListener("click", leaveRoom);
 els.backToLobbyBtn.addEventListener("click", () => setMode("lobby"));
 els.copyRoomBtn.addEventListener("click", copyRoomCode);
 els.nextRoundBtn.addEventListener("click", resetRound);
+els.betOptions.addEventListener("click", selectBet);
+els.confirmBetBtn.addEventListener("click", confirmBet);
 
 state.deck = shuffle(createDeck());
 state.round = 0;

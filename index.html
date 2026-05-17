@@ -117,6 +117,20 @@
 
         <div class="action-panel">
           <div class="turn-note" id="actionHint">等待其他玩家</div>
+          <div class="bet-panel" id="betPanel">
+            <div class="bet-head">
+              <span>本局下注</span>
+              <strong id="betAmountLabel">20</strong>
+            </div>
+            <div class="bet-options" id="betOptions">
+              <button type="button" data-bet="10">10</button>
+              <button type="button" data-bet="20">20</button>
+              <button type="button" data-bet="30">30</button>
+              <button type="button" data-bet="40">40</button>
+              <button type="button" data-bet="50">50</button>
+            </div>
+            <button class="primary" id="confirmBetBtn" type="button">确认下注</button>
+          </div>
           <div class="action-buttons">
             <button class="danger" id="standBtn" type="button">不要了</button>
             <button class="primary" id="hitBtn" type="button">要！</button>
