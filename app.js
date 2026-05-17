@@ -26,28 +26,28 @@ const state = {
     {
       id: "dealer",
       name: "小林",
-      chips: 530,
+      chips: 0,
       isDealer: true,
       hands: [{ cards: [], bet: 0, stood: false, busted: false }],
     },
     {
       id: "zhou",
       name: "阿周",
-      chips: 500,
+      chips: 0,
       isDealer: false,
       hands: [{ cards: [], bet: 20, stood: false, busted: false }],
     },
     {
       id: "ning",
       name: "宁宁",
-      chips: 480,
+      chips: 0,
       isDealer: false,
       hands: [{ cards: [], bet: 30, stood: false, busted: false }],
     },
     {
       id: "yan",
       name: "阿言",
-      chips: 510,
+      chips: 0,
       isDealer: false,
       hands: [{ cards: [], bet: 10, stood: false, busted: false }],
     },
@@ -73,12 +73,17 @@ const els = {
   nextRoundBtn: document.querySelector("#nextRoundBtn"),
   hitBtn: document.querySelector("#hitBtn"),
   standBtn: document.querySelector("#standBtn"),
+  splitBtn: document.querySelector("#splitBtn"),
   revealBtn: document.querySelector("#revealBtn"),
   connectionState: document.querySelector("#connectionState"),
   nicknameInput: document.querySelector("#nicknameInput"),
   roomCodeInput: document.querySelector("#roomCodeInput"),
   apiBaseInput: document.querySelector("#apiBaseInput"),
   createRoomBtn: document.querySelector("#createRoomBtn"),
+  maxPlayersInput: document.querySelector("#maxPlayersInput"),
+  actionTimeoutInput: document.querySelector("#actionTimeoutInput"),
+  roundLimitInput: document.querySelector("#roundLimitInput"),
+  timeLimitInput: document.querySelector("#timeLimitInput"),
   joinRoomBtn: document.querySelector("#joinRoomBtn"),
   continueRoomBtn: document.querySelector("#continueRoomBtn"),
   leaveRoomBtn: document.querySelector("#leaveRoomBtn"),
@@ -88,6 +93,7 @@ const els = {
   playerCountLabel: document.querySelector("#playerCountLabel"),
   lobbyPlayers: document.querySelector("#lobbyPlayers"),
   lobbyHint: document.querySelector("#lobbyHint"),
+  ruleStrip: document.querySelector("#ruleStrip"),
   actionHint: document.querySelector("#actionHint"),
   betPanel: document.querySelector("#betPanel"),
   betAmountLabel: document.querySelector("#betAmountLabel"),
@@ -172,6 +178,16 @@ function currentPlayer() {
 
 function dealer() {
   return state.players.find((player) => player.isDealer);
+}
+
+function currentViewerHand(viewer) {
+  return viewer?.hands?.[state.currentHandIndex || 0] || viewer?.hands?.[0];
+}
+
+function timeLeftLabel() {
+  if (!state.turnDeadlineAt || !["player_turn", "dealer_turn"].includes(state.status)) return "";
+  const seconds = Math.max(0, Math.ceil((state.turnDeadlineAt - Date.now()) / 1000));
+  return `${seconds}s`;
 }
 
 function resetRound() {
@@ -383,8 +399,10 @@ function render(animateCards = false, flipDealer = false) {
   const isViewerDealerTurn = house.id === state.viewerId && state.status === "dealer_turn";
   const isViewerBetting = state.status === "betting" && viewer && !viewer.isDealer && viewer.activeFromRound <= state.round;
   const viewerBetConfirmed = Boolean(viewer?.hands?.[0]?.betConfirmed);
-  const viewerHand = viewer?.hands?.[0];
+  const viewerHand = currentViewerHand(viewer);
   const mustHit = viewerHand ? handScore(viewerHand.cards) <= 13 : false;
+  const canSplit = Boolean(viewerHand?.canSplit);
+  const left = timeLeftLabel();
   els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
   els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
   els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}`;
@@ -396,20 +414,22 @@ function render(animateCards = false, flipDealer = false) {
     ? "等待闲家下注"
     : state.status === "dealer_turn"
     ? isViewerDealerTurn
-      ? "庄家回合，等待你决策"
+      ? `庄家回合，等待你决策${left ? ` · ${left}` : ""}`
       : "庄家牌已亮，等待庄家决策"
     : isViewerTurn
-      ? "轮到你行动"
+      ? `轮到你行动${left ? ` · ${left}` : ""}`
       : currentPlayer()
-        ? `等待 ${currentPlayer().name} 行动`
+        ? `等待 ${currentPlayer().name} 行动${left ? ` · ${left}` : ""}`
         : "等待开局";
   const isViewerDealer = house.id === state.viewerId;
   const canRevealDealer = state.online ? false : !state.dealerRevealed;
   els.revealBtn.disabled = !canRevealDealer;
   els.hitBtn.disabled = !(isViewerTurn || isViewerDealerTurn);
   els.standBtn.disabled = !(isViewerTurn || isViewerDealerTurn) || mustHit;
+  els.splitBtn.disabled = !(isViewerTurn || isViewerDealerTurn) || !canSplit;
   els.hitBtn.textContent = isViewerTurn || isViewerDealerTurn ? "要！" : "等待中";
   els.standBtn.textContent = (isViewerTurn || isViewerDealerTurn) && mustHit ? "必须要" : isViewerTurn || isViewerDealerTurn ? "不要了" : "等待中";
+  els.splitBtn.textContent = canSplit ? "分牌" : "不可分牌";
   els.revealBtn.textContent = state.status === "dealer_turn" ? "庄家决策中" : "亮庄家牌";
   els.dealBtn.textContent = state.online && state.status === "lobby" ? "开始游戏" : "下一局";
   renderBetPanel(isViewerBetting, viewerBetConfirmed, viewerHand?.bet || 20);
@@ -462,10 +482,32 @@ function renderLobby() {
   els.playerCountLabel.textContent = `${state.players.length}/${state.maxPlayers || 5}`;
   els.connectionState.textContent = state.status === "lobby" ? "等待开局" : getRoundLabel();
   els.lobbyPlayers.innerHTML = state.players.map(renderLobbyPlayer).join("");
-  const canStart = state.players.length >= 3 && (state.status === "lobby" || state.status === "settlement");
+  renderRuleStrip();
+  const canStart = state.players.length >= 3 && (state.status === "lobby" || state.status === "settlement") && !state.gameOverReason;
   els.dealBtn.disabled = !canStart;
   els.dealBtn.textContent = state.status === "settlement" ? "下一局" : "开始游戏";
-  els.lobbyHint.textContent = canStart ? "准备好了就开始；新加入玩家下一局参与。" : "至少 3 人开始；可以先把房间号发给朋友。";
+  els.lobbyHint.textContent = state.gameOverReason
+    ? state.gameOverReason
+    : canStart
+      ? "准备好了就开始；新加入玩家下一局参与。"
+      : "至少 3 人开始；可以先把房间号发给朋友。";
+}
+
+function renderRuleStrip() {
+  const settings = state.settings || {};
+  const minBet = settings.minBet || 10;
+  const maxBet = settings.maxBet || 50;
+  const timeout = settings.actionTimeoutSeconds || 30;
+  const roundLimit = settings.roundLimit ? `${settings.roundLimit} 局结束` : "不限局数";
+  const timeLimit = settings.timeLimitMinutes ? `${settings.timeLimitMinutes} 分钟结束` : "不限时间";
+  els.ruleStrip.innerHTML = [
+    `下注 ${minBet}-${maxBet}`,
+    `≤13 自动要牌`,
+    `${timeout}s 超时托管`,
+    "可分牌，不可再分",
+    "庄爆换下一庄",
+    `${roundLimit} · ${timeLimit}`,
+  ].map((item) => `<span>${item}</span>`).join("");
 }
 
 function renderLobbyPlayer(player) {
@@ -473,12 +515,13 @@ function renderLobbyPlayer(player) {
   const isViewer = player.id === state.viewerId;
   const pending = state.status !== "lobby" && player.activeFromRound > state.round;
   const stateLabel = pending ? "下一局加入" : player.isDealer ? "庄家" : "已入座";
+  const nextDealer = state.nextDealerId === player.id ? " · 下局庄" : "";
   return `
     <article class="lobby-player ${isViewer ? "self" : ""}">
       <span class="avatar">${initials}</span>
       <div>
         <strong>${isViewer ? "你" : player.name}</strong>
-        <small>${stateLabel}</small>
+        <small>${stateLabel}${nextDealer}</small>
       </div>
       <span class="chips">${player.chips}</span>
     </article>
@@ -490,13 +533,14 @@ function renderViewerSeat(player, animateCards) {
   const role = player.isDealer ? "庄家" : getPlayerStateLabel(player);
   const showdownStep = currentShowdownStep();
   const resultBadge = showdownStep && player.id === showdownStep.playerId ? renderResultBadge(showdownStep) : "";
+  const betTotal = player.hands.reduce((sum, hand) => sum + (hand.bet || 0), 0);
   return `
     <article class="viewer-panel">
       <div class="viewer-profile">
         <span class="avatar">${player.name.slice(0, 1)}</span>
         <div>
           <strong>你</strong>
-          <small>${role} · 筹码 ${player.chips}</small>
+          <small>${role} · 筹码 ${player.chips}${betTotal ? ` · 本局下注 ${betTotal}` : ""}</small>
         </div>
       </div>
       <div class="viewer-hands">${handHtml}</div>
@@ -530,13 +574,15 @@ function renderBetPanel(isViewerBetting, viewerBetConfirmed, currentBet) {
 }
 
 function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting = false, viewerBetConfirmed = false) {
-  if (state.status === "settlement") return "本局已结算";
+  const left = timeLeftLabel();
+  const timer = left ? ` · ${left}` : "";
+  if (state.status === "settlement") return state.gameOverReason || "本局已结算";
   if (isViewerBetting) return viewerBetConfirmed ? "已确认下注，等待其他闲家" : "请选择本局下注";
   if (state.status === "betting") return "等待闲家下注";
-  if (isViewerDealerTurn) return "庄家回合：你可以要，或不要了";
-  if (state.status === "dealer_turn") return "庄家牌已亮，等待庄家决策";
-  if (isViewerTurn) return "轮到你行动";
-  if (currentPlayer()) return `等待 ${currentPlayer().name} 行动`;
+  if (isViewerDealerTurn) return `庄家回合：你可以要、不要了，或对子分牌${timer}`;
+  if (state.status === "dealer_turn") return `庄家牌已亮，等待庄家决策${timer}`;
+  if (isViewerTurn) return `轮到你行动${timer}`;
+  if (currentPlayer()) return `等待 ${currentPlayer().name} 行动${timer}`;
   return "等待开局";
 }
 
@@ -544,6 +590,8 @@ function renderSettlement() {
   const visible = state.status === "settlement" && state.showdown.showPanel;
   els.settlementSheet.classList.toggle("show", visible);
   if (!visible) return;
+  els.nextRoundBtn.disabled = Boolean(state.gameOverReason);
+  els.nextRoundBtn.textContent = state.gameOverReason ? "本场已结束" : "下一局";
   const settlements = state.settlements || [];
   const rows = settlements.map((item) => {
     const positive = item.delta > 0;
@@ -552,7 +600,7 @@ function renderSettlement() {
       <article class="settlement-row ${positive ? "win" : "lose"}">
         <div>
           <strong>${item.playerName}</strong>
-          <small>下注 ${item.bet} · 倍率 x${item.multiplier}</small>
+          <small>${item.playerHandLabel} vs ${item.dealerHandLabel} · 下注 ${item.bet} · x${item.multiplier}</small>
         </div>
         <span>${label}</span>
       </article>
@@ -623,6 +671,7 @@ function renderSeat(player, isHouse, animateCards, flipDealer) {
   const actionState = getPlayerStateLabel(player);
   const displayName = isViewer ? "You" : player.name;
   const badge = player.isDealer ? '<span class="dealer-badge">庄</span>' : "";
+  const betTotal = player.isDealer ? 0 : player.hands.reduce((sum, hand) => sum + (hand.bet || 0), 0);
   return `
     <article class="${seatClass}">
       ${player.hands.map((hand, index) => renderHand(hand, player, index, animateCards, flipDealer)).join("")}
@@ -634,6 +683,7 @@ function renderSeat(player, isHouse, animateCards, flipDealer) {
             ${badge}
           </div>
           <span class="chips">$${Math.abs(player.chips).toFixed(2)}</span>
+          ${betTotal ? `<span class="bet-chip">下注 ${betTotal}</span>` : ""}
           <small>${actionState}</small>
         </div>
       </div>
@@ -688,10 +738,13 @@ function renderHand(hand, player, handIndex, animateCards, flipDealer) {
   const score = allCardsVisible ? handScore(hand.cards) : `${hand.cards.length} 张牌`;
   const bustClass = allCardsVisible && isBust(hand.cards) ? "bust" : "";
   const hotClass = rank.label ? "hot" : "";
+  const activeClass = currentPlayer()?.id === player.id && handIndex === (state.currentHandIndex || 0) ? "active-hand" : "";
+  const handName = player.hands.length > 1 ? `<span class="score-pill">第 ${handIndex + 1} 手</span>` : "";
   return `
-    <div class="hand-wrap">
+    <div class="hand-wrap ${activeClass}">
       <div class="hand-row ${handIndex > 0 ? "split" : ""}">${visibleCards.join("")}</div>
       <div class="hand-meta">
+        ${handName}
         <span class="score-pill ${bustClass || hotClass}">${bustClass ? "爆牌" : allCardsVisible ? `${score} 点` : score}</span>
         ${hand.bet ? `<span class="score-pill">下注 ${hand.bet}</span>` : ""}
         ${rank.label ? `<span class="tag">${rank.label}</span>` : ""}
@@ -760,9 +813,14 @@ function applyOnlineSnapshot(payload, options = {}) {
 async function createOnlineRoom() {
   try {
     state.apiBase = normalizeApiBase(els.apiBaseInput.value);
+    const settings = {
+      actionTimeoutSeconds: Number(els.actionTimeoutInput.value),
+      roundLimit: Number(els.roundLimitInput.value),
+      timeLimitMinutes: Number(els.timeLimitInput.value),
+    };
     const payload = await apiRequest("/api/rooms", {
       method: "POST",
-      body: JSON.stringify({ nickname: els.nicknameInput.value, maxPlayers: 5 }),
+      body: JSON.stringify({ nickname: els.nicknameInput.value, maxPlayers: Number(els.maxPlayersInput.value), settings }),
     });
     els.roomCodeInput.value = payload.room.code;
     applyOnlineSnapshot(payload, { animate: true });
@@ -861,6 +919,7 @@ async function confirmBet() {
 els.dealBtn.addEventListener("click", resetRound);
 els.hitBtn.addEventListener("click", hit);
 els.standBtn.addEventListener("click", stand);
+els.splitBtn.addEventListener("click", () => sendAction("split"));
 els.revealBtn.addEventListener("click", revealDealer);
 els.createRoomBtn.addEventListener("click", createOnlineRoom);
 els.joinRoomBtn.addEventListener("click", joinOnlineRoom);

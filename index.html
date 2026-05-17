@@ -23,6 +23,47 @@
 
           <button class="primary large" id="createRoomBtn" type="button">创建房间</button>
 
+          <details class="room-settings">
+            <summary>房间设置</summary>
+            <div class="settings-grid">
+              <label>
+                房间人数
+                <select id="maxPlayersInput">
+                  <option value="3">3 人</option>
+                  <option value="4">4 人</option>
+                  <option value="5" selected>5 人</option>
+                </select>
+              </label>
+              <label>
+                出牌等待
+                <select id="actionTimeoutInput">
+                  <option value="20">20 秒</option>
+                  <option value="30" selected>30 秒</option>
+                  <option value="45">45 秒</option>
+                  <option value="60">60 秒</option>
+                </select>
+              </label>
+              <label>
+                局数限制
+                <select id="roundLimitInput">
+                  <option value="0" selected>不限局数</option>
+                  <option value="5">5 局</option>
+                  <option value="10">10 局</option>
+                  <option value="20">20 局</option>
+                </select>
+              </label>
+              <label>
+                时间限制
+                <select id="timeLimitInput">
+                  <option value="0" selected>不限时间</option>
+                  <option value="15">15 分钟</option>
+                  <option value="30">30 分钟</option>
+                  <option value="60">60 分钟</option>
+                </select>
+              </label>
+            </div>
+          </details>
+
           <div class="join-box">
             <label>
               房间号
@@ -66,12 +107,12 @@
           <div class="lobby-players" id="lobbyPlayers"></div>
         </section>
 
-        <section class="rule-strip" aria-label="桌规">
+        <section class="rule-strip" id="ruleStrip" aria-label="桌规">
           <span>下注 10-50</span>
           <span>≤13 必须要牌</span>
-          <span>21 点 x2</span>
-          <span>一对 A x3</span>
-          <span>五小牛 x5</span>
+          <span>超时自动托管</span>
+          <span>可分牌</span>
+          <span>爆庄换庄</span>
         </section>
 
         <div class="lobby-action">
@@ -135,6 +176,7 @@
           <div class="action-buttons">
             <button class="danger" id="standBtn" type="button">不要了</button>
             <button class="primary" id="hitBtn" type="button">要！</button>
+            <button class="warning" id="splitBtn" type="button">分牌</button>
             <button class="success" id="revealBtn" type="button">亮庄家牌</button>
           </div>
         </div>
