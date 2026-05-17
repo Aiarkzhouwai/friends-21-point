@@ -593,8 +593,20 @@ label {
   width: 100%;
 }
 
+.viewer-hands .hand-wrap {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 5px;
+}
+
+.hand-wrap.active-hand {
+  border-color: rgba(245, 200, 95, 0.62);
+  background: rgba(245, 200, 95, 0.08);
+  box-shadow: 0 0 0 1px rgba(245, 200, 95, 0.12), 0 0 22px rgba(245, 200, 95, 0.2);
+}
+
 .hand-wrap.active-hand .hand-row {
-  filter: drop-shadow(0 0 10px rgba(245, 200, 95, 0.5));
+  filter: drop-shadow(0 0 12px rgba(245, 200, 95, 0.62));
 }
 
 .hand-row {
@@ -697,6 +709,13 @@ label {
   border-color: transparent;
   background: var(--gold);
   font-weight: 900;
+}
+
+.score-pill.hand-index.active {
+  color: #1b1302;
+  border-color: transparent;
+  background: var(--gold);
+  font-weight: 950;
 }
 
 .score-pill.bust {

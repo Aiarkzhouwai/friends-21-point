@@ -552,10 +552,10 @@ function split(room, player) {
   if (!canSplitHand(hand)) throw new Error("只有起手对子可以分牌，且不能再次分牌");
   const [first, second] = hand.cards;
   const bet = player.isDealer ? 0 : hand.bet;
-  const firstHand = createHand(bet, { cards: [first, drawCard(room)], betConfirmed: true, wasSplit: true });
-  const secondHand = createHand(bet, { cards: [second, drawCard(room)], betConfirmed: true, wasSplit: true });
+  const firstHand = createHand(bet, { cards: [first], betConfirmed: true, wasSplit: true });
+  const secondHand = createHand(bet, { cards: [second], betConfirmed: true, wasSplit: true });
   player.hands.splice(room.currentHandIndex, 1, firstHand, secondHand);
-  room.events.unshift(`${player.nickname} 分牌。`);
+  room.events.unshift(`${player.nickname} 分牌，从第 1 手开始操作。`);
   setTurnDeadline(room);
   room.updatedAt = Date.now();
 }

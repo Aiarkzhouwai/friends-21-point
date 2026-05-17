@@ -190,6 +190,12 @@ function timeLeftLabel() {
   return `${seconds}s`;
 }
 
+function activeHandLabel() {
+  const player = currentPlayer();
+  if (!player || player.hands.length <= 1) return "";
+  return `第 ${(state.currentHandIndex || 0) + 1}/${player.hands.length} 手`;
+}
+
 function hashString(value) {
   return String(value || "")
     .split("")
@@ -446,6 +452,7 @@ function render(animateCards = false, flipDealer = false) {
   els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
   els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
   els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}`;
+  const handLabel = activeHandLabel();
   els.turnLabel.textContent = state.status === "settlement"
     ? state.showdown.showPanel
       ? "本局结算完成"
@@ -454,12 +461,12 @@ function render(animateCards = false, flipDealer = false) {
     ? "等待闲家下注"
     : state.status === "dealer_turn"
     ? isViewerDealerTurn
-      ? `庄家回合，等待你决策${left ? ` · ${left}` : ""}`
+      ? `庄家回合，${handLabel ? `${handLabel} · ` : ""}等待你决策${left ? ` · ${left}` : ""}`
       : "庄家牌已亮，等待庄家决策"
     : isViewerTurn
-      ? `轮到你行动${left ? ` · ${left}` : ""}`
+      ? `轮到你行动${handLabel ? ` · ${handLabel}` : ""}${left ? ` · ${left}` : ""}`
       : currentPlayer()
-        ? `等待 ${currentPlayer().name} 行动${left ? ` · ${left}` : ""}`
+        ? `等待 ${currentPlayer().name} 行动${handLabel ? ` · ${handLabel}` : ""}${left ? ` · ${left}` : ""}`
         : "等待开局";
   const isViewerDealer = house.id === state.viewerId;
   const canRevealDealer = state.online ? false : !state.dealerRevealed;
@@ -615,13 +622,15 @@ function renderBetPanel(isViewerBetting, viewerBetConfirmed, currentBet) {
 function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting = false, viewerBetConfirmed = false) {
   const left = timeLeftLabel();
   const timer = left ? ` · ${left}` : "";
+  const hand = activeHandLabel();
+  const handText = hand ? `正在操作${hand} · ` : "";
   if (state.status === "settlement") return state.gameOverReason || "本局已结算";
   if (isViewerBetting) return viewerBetConfirmed ? "已确认下注，等待其他闲家" : "请选择本局下注";
   if (state.status === "betting") return "等待闲家下注";
-  if (isViewerDealerTurn) return `庄家回合：你可以要、不要了，或对子分牌${timer}`;
-  if (state.status === "dealer_turn") return `庄家牌已亮，等待庄家决策${timer}`;
-  if (isViewerTurn) return `轮到你行动${timer}`;
-  if (currentPlayer()) return `等待 ${currentPlayer().name} 行动${timer}`;
+  if (isViewerDealerTurn) return `${handText}庄家回合：你可以要、不要了，或对子分牌${timer}`;
+  if (state.status === "dealer_turn") return `${handText}庄家牌已亮，等待庄家决策${timer}`;
+  if (isViewerTurn) return `${handText}轮到你行动${timer}`;
+  if (currentPlayer()) return `${handText}等待 ${currentPlayer().name} 行动${timer}`;
   return "等待开局";
 }
 
@@ -775,8 +784,9 @@ function renderHand(hand, player, handIndex, animateCards, flipDealer) {
   const score = allCardsVisible ? handScore(hand.cards) : `${hand.cards.length} 张牌`;
   const bustClass = allCardsVisible && isBust(hand.cards) ? "bust" : "";
   const hotClass = rank.label ? "hot" : "";
-  const activeClass = currentPlayer()?.id === player.id && handIndex === (state.currentHandIndex || 0) ? "active-hand" : "";
-  const handName = player.hands.length > 1 ? `<span class="score-pill">第 ${handIndex + 1} 手</span>` : "";
+  const isActiveHand = ["player_turn", "dealer_turn"].includes(state.status) && currentPlayer()?.id === player.id && handIndex === (state.currentHandIndex || 0);
+  const activeClass = isActiveHand ? "active-hand" : "";
+  const handName = player.hands.length > 1 ? `<span class="score-pill hand-index ${isActiveHand ? "active" : ""}">${isActiveHand ? "操作中 · " : ""}第 ${handIndex + 1} 手</span>` : "";
   return `
     <div class="hand-wrap ${activeClass}">
       <div class="hand-row ${handIndex > 0 ? "split" : ""}">${visibleCards.join("")}</div>
