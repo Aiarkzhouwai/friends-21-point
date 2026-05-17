@@ -26,7 +26,10 @@
 - `server.mjs`
 - `render.yaml`
 
-直接用浏览器打开 `index.html` 即可体验离线演示。部署 `server.mjs` 后，在页面底部填写后端地址即可创建/加入在线房间。
+直接用浏览器打开 `index.html` 即可体验离线演示。线上页面默认连接 Render 后端：
+
+- 前端：https://aiarkzhouwai.github.io/friends-21-point/
+- 后端：https://friends-21-point-api.onrender.com
 
 生成可发布目录：
 

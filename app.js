@@ -1,9 +1,10 @@
 const suits = ["♠", "♥", "♣", "♦"];
 const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const DEFAULT_API_BASE = "https://friends-21-point-api.onrender.com";
 
 const state = {
   online: false,
-  apiBase: localStorage.getItem("apiBase") || "",
+  apiBase: localStorage.getItem("apiBase") || DEFAULT_API_BASE,
   roomCode: localStorage.getItem("roomCode") || "",
   playerId: localStorage.getItem("playerId") || "",
   pollTimer: null,

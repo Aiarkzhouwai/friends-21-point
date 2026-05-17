@@ -51,12 +51,13 @@ python3 -m http.server 4173 -d dist
 - 操作合法性校验
 - 基础断线恢复：同一浏览器保留 roomCode/playerId
 
-Render 部署建议：
+Render 部署：
 
-- 使用仓库里的 `render.yaml` 创建 Web Service。
+- 服务名：`friends-21-point-api`
+- 服务地址：https://friends-21-point-api.onrender.com
 - Start command: `node server.mjs`
 - Health check path: `/health`
-- 部署完成后，把 Render 服务 URL 填到网页底部“后端地址”。
+- 前端默认连接这个 Render 服务，仍可在页面底部改成其他后端地址。
 
 限制：
 
@@ -70,14 +71,6 @@ Render 部署建议：
 - 把轮询升级为 WebSocket。
 - 补全拆分、庄家拆分、多手结算和中途加入观战。
 - 加入房间过期清理和基础防刷。
-
-## 我需要的资源
-
-如果要我继续部署后端到 Render，需要以下资源之一：
-
-1. Render 账号连接这个 GitHub 仓库，并允许从 `render.yaml` 创建服务。
-2. 或提供 Render API Key，我用 Render API 创建服务。
-3. 如果要绑定域名，需要域名和 DNS 管理权限。
 
 ## 注意
 
