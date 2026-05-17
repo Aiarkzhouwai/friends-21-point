@@ -345,6 +345,7 @@ function visibleRoom(room, viewerId) {
         (player.isDealer && room.dealerRevealed) ||
         hand.busted ||
         (hand.stood && handRank(hand.cards).level > 0);
+      const canSeeCard = (hand, index) => canSeeHand(hand) || index >= 2;
       return {
         id: player.id,
         name: player.nickname,
@@ -357,7 +358,7 @@ function visibleRoom(room, viewerId) {
           bet: hand.bet,
           stood: hand.stood,
           busted: hand.busted,
-          cards: hand.cards.map((card) => (canSeeHand(hand) ? publicCard(card) : { hidden: true })),
+          cards: hand.cards.map((card, index) => (canSeeCard(hand, index) ? publicCard(card) : { hidden: true })),
         })),
       };
     }),

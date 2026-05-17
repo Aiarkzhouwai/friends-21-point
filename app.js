@@ -387,8 +387,8 @@ function render(animateCards = false, flipDealer = false) {
   els.revealBtn.disabled = !canRevealDealer;
   els.hitBtn.disabled = !(isViewerTurn || isViewerDealerTurn);
   els.standBtn.disabled = !(isViewerTurn || isViewerDealerTurn) || mustHit;
-  els.hitBtn.textContent = isViewerTurn || isViewerDealerTurn ? "要牌" : "等待中";
-  els.standBtn.textContent = (isViewerTurn || isViewerDealerTurn) && mustHit ? "必须要牌" : isViewerTurn || isViewerDealerTurn ? "停牌" : "等待中";
+  els.hitBtn.textContent = isViewerTurn || isViewerDealerTurn ? "要！" : "等待中";
+  els.standBtn.textContent = (isViewerTurn || isViewerDealerTurn) && mustHit ? "必须要" : isViewerTurn || isViewerDealerTurn ? "不要了" : "等待中";
   els.revealBtn.textContent = state.status === "dealer_turn" ? "庄家决策中" : "亮庄家牌";
   els.dealBtn.textContent = state.online && state.status === "lobby" ? "开始游戏" : "下一局";
   els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn);
@@ -452,7 +452,7 @@ function renderSpectatorSeat() {
 
 function getActionHint(isViewerTurn, isViewerDealerTurn = false) {
   if (state.status === "settlement") return "本局已结算";
-  if (isViewerDealerTurn) return "庄家回合：你可以要牌或停牌";
+  if (isViewerDealerTurn) return "庄家回合：你可以要，或不要了";
   if (state.status === "dealer_turn") return "庄家牌已亮，等待庄家决策";
   if (isViewerTurn) return "轮到你行动";
   if (currentPlayer()) return `等待 ${currentPlayer().name} 行动`;
