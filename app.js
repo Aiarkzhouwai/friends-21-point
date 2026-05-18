@@ -476,7 +476,7 @@ function render(animateCards = false, flipDealer = false) {
   const house = dealer();
   if (!house) return;
 
-  els.dealerArea.innerHTML = renderSeat(house, true, animateCards, flipDealer);
+  els.dealerArea.innerHTML = house.id === state.viewerId ? "" : renderSeat(house, true, animateCards, flipDealer);
   const idlePlayers = state.players.filter((player) => !player.isDealer);
   const viewer = state.players.find((player) => player.id === state.viewerId);
   const otherPlayers = idlePlayers.filter((player) => player.id !== state.viewerId);
