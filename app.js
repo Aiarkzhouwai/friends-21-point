@@ -134,6 +134,20 @@ function setQuickNickname(name = selectedQuickName()) {
   });
 }
 
+function nicknameValue() {
+  return els.nicknameInput.value.trim();
+}
+
+function requireNickname() {
+  const nickname = nicknameValue();
+  if (!nickname) {
+    showToast("请先输入或选择昵称");
+    els.nicknameInput.focus();
+    throw new Error("请先输入或选择昵称");
+  }
+  return nickname;
+}
+
 function createDeck() {
   return suits.flatMap((suit) =>
     ranks.map((rank) => ({
@@ -434,6 +448,8 @@ function compareHands(playerCards, dealerCards) {
   const playerScore = handScore(playerCards);
   const dealerScore = handScore(dealerCards);
   if (playerScore > dealerScore) return 1;
+  if (playerScore < dealerScore) return -1;
+  if (playerCards.length > dealerCards.length) return 1;
   return -1;
 }
 
@@ -948,6 +964,7 @@ function applyOnlineSnapshot(payload, options = {}) {
 async function createOnlineRoom() {
   try {
     state.apiBase = normalizeApiBase(els.apiBaseInput.value);
+    const nickname = requireNickname();
     const settings = {
       actionTimeoutSeconds: Number(els.actionTimeoutInput.value),
       roundLimit: Number(els.roundLimitInput.value),
@@ -955,7 +972,7 @@ async function createOnlineRoom() {
     };
     const payload = await apiRequest("/api/rooms", {
       method: "POST",
-      body: JSON.stringify({ nickname: els.nicknameInput.value, maxPlayers: Number(els.maxPlayersInput.value), settings }),
+      body: JSON.stringify({ nickname, maxPlayers: Number(els.maxPlayersInput.value), settings }),
     });
     els.roomCodeInput.value = payload.room.code;
     applyOnlineSnapshot(payload, { animate: true });
@@ -968,12 +985,13 @@ async function createOnlineRoom() {
 async function joinOnlineRoom(codeOverride = "") {
   try {
     state.apiBase = normalizeApiBase(els.apiBaseInput.value);
+    const nickname = requireNickname();
     const code = String(codeOverride || els.roomCodeInput.value).trim();
     if (!code) throw new Error("请选择或输入房间号");
     els.roomCodeInput.value = code;
     const payload = await apiRequest(`/api/rooms/${code}/join`, {
       method: "POST",
-      body: JSON.stringify({ nickname: els.nicknameInput.value }),
+      body: JSON.stringify({ nickname }),
     });
     applyOnlineSnapshot(payload, { animate: true });
     showToast(`已加入房间 ${code}`);

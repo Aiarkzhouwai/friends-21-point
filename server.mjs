@@ -152,10 +152,16 @@ function createHand(bet = 0, options = {}) {
   };
 }
 
+function normalizeNickname(nickname) {
+  const value = String(nickname || "").trim().slice(0, 16);
+  if (!value) throw new Error("请先输入或选择昵称");
+  return value;
+}
+
 function createPlayer(nickname, seatIndex, isHost = false, settings = DEFAULT_SETTINGS) {
   return {
     id: randomUUID(),
-    nickname: String(nickname || "玩家").slice(0, 16),
+    nickname: normalizeNickname(nickname),
     seatIndex,
     chips: settings.initialChips,
     status: "connected",
@@ -447,6 +453,8 @@ function compareHands(playerCards, dealerCards) {
   const playerScore = handScore(playerCards);
   const dealerScore = handScore(dealerCards);
   if (playerScore > dealerScore) return 1;
+  if (playerScore < dealerScore) return -1;
+  if (playerCards.length > dealerCards.length) return 1;
   return -1;
 }
 
@@ -465,7 +473,12 @@ function compareReason(playerCards, dealerCards, result) {
 
   const playerScore = handScore(playerCards);
   const dealerScore = handScore(dealerCards);
-  if (playerScore === dealerScore) return "同点庄赢";
+  if (playerScore === dealerScore) {
+    if (playerCards.length !== dealerCards.length) {
+      return result > 0 ? "同点数，闲家牌更多胜" : "同点数，庄家牌更多胜";
+    }
+    return playerRank > 0 ? `同为${handLabel(playerCards)}且牌数相同，庄赢` : "同点同牌数，庄赢";
+  }
   return result > 0 ? "闲家点数更高" : "庄家点数更高";
 }
 
