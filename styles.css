@@ -213,6 +213,41 @@ label {
   gap: 8px;
 }
 
+.nickname-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.nickname-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.nickname-options {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.nickname-options button {
+  min-height: 40px;
+  padding: 0;
+  color: #fff4c7;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+}
+
+.nickname-options button.selected {
+  border-color: rgba(245, 200, 95, 0.78);
+  color: #1a1102;
+  background: linear-gradient(#ffe48e, #d99a30);
+}
+
 .room-list-panel {
   display: grid;
   gap: 10px;

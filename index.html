@@ -21,6 +21,21 @@
             <input id="nicknameInput" maxlength="16" value="阿周" autocomplete="nickname" />
           </label>
 
+          <section class="nickname-panel" aria-label="快捷昵称">
+            <div class="nickname-head">
+              <span>快捷选择</span>
+              <button class="ghost compact" id="rerollNicknameBtn" type="button">换个前缀</button>
+            </div>
+            <div class="nickname-options" id="nicknameOptions">
+              <button type="button" data-name="伟">伟</button>
+              <button type="button" data-name="乐">乐</button>
+              <button type="button" data-name="吸">吸</button>
+              <button type="button" data-name="坚">坚</button>
+              <button type="button" data-name="栋">栋</button>
+              <button type="button" data-name="舟">舟</button>
+            </div>
+          </section>
+
           <button class="primary large" id="createRoomBtn" type="button">创建房间</button>
 
           <details class="room-settings">

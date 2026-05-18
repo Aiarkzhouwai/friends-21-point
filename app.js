@@ -1,6 +1,7 @@
 const suits = ["♠", "♥", "♣", "♦"];
 const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const DEFAULT_API_BASE = "https://friends-21-point-api.onrender.com";
+const nicknamePrefixes = ["无敌", "超级", "发财", "幸运", "快乐", "威猛", "闪亮", "稳赢", "豪气", "暴富", "神勇", "如意"];
 
 const state = {
   online: false,
@@ -83,6 +84,8 @@ const els = {
   connectionState: document.querySelector("#connectionState"),
   nicknameInput: document.querySelector("#nicknameInput"),
   roomCodeInput: document.querySelector("#roomCodeInput"),
+  nicknameOptions: document.querySelector("#nicknameOptions"),
+  rerollNicknameBtn: document.querySelector("#rerollNicknameBtn"),
   apiBaseInput: document.querySelector("#apiBaseInput"),
   createRoomBtn: document.querySelector("#createRoomBtn"),
   maxPlayersInput: document.querySelector("#maxPlayersInput"),
@@ -114,6 +117,22 @@ const els = {
 els.apiBaseInput.value = state.apiBase;
 els.roomCodeInput.value = state.roomCode;
 els.continueRoomBtn.hidden = !(state.roomCode && state.playerId);
+
+function randomItem(items) {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function selectedQuickName() {
+  return els.nicknameOptions?.querySelector("button.selected")?.dataset.name || "";
+}
+
+function setQuickNickname(name = selectedQuickName()) {
+  if (!name) return;
+  els.nicknameInput.value = `${randomItem(nicknamePrefixes)}${name}`;
+  [...els.nicknameOptions.querySelectorAll("button")].forEach((button) => {
+    button.classList.toggle("selected", button.dataset.name === name);
+  });
+}
 
 function createDeck() {
   return suits.flatMap((suit) =>
@@ -1079,6 +1098,15 @@ els.splitBtn.addEventListener("click", () => sendAction("split"));
 els.revealBtn.addEventListener("click", revealDealer);
 els.createRoomBtn.addEventListener("click", createOnlineRoom);
 els.joinRoomBtn.addEventListener("click", () => joinOnlineRoom());
+els.nicknameOptions.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-name]");
+  if (!button) return;
+  setQuickNickname(button.dataset.name);
+});
+els.rerollNicknameBtn.addEventListener("click", () => {
+  const name = selectedQuickName() || "舟";
+  setQuickNickname(name);
+});
 els.refreshRoomsBtn.addEventListener("click", loadRoomList);
 els.roomList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-room-code]");
