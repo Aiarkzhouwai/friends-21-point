@@ -985,16 +985,24 @@ async function createOnlineRoom() {
 async function joinOnlineRoom(codeOverride = "") {
   try {
     state.apiBase = normalizeApiBase(els.apiBaseInput.value);
-    const nickname = requireNickname();
     const code = String(codeOverride || els.roomCodeInput.value).trim();
     if (!code) throw new Error("请选择或输入房间号");
     els.roomCodeInput.value = code;
+
+    if (state.playerId && state.roomCode === code) {
+      state.online = true;
+      await syncOnlineRoom();
+      showToast(`已回到房间 ${code}`);
+      return;
+    }
+
+    const nickname = requireNickname();
     const payload = await apiRequest(`/api/rooms/${code}/join`, {
       method: "POST",
-      body: JSON.stringify({ nickname }),
+      body: JSON.stringify({ nickname, playerId: state.roomCode === code ? state.playerId : "" }),
     });
     applyOnlineSnapshot(payload, { animate: true });
-    showToast(`已加入房间 ${code}`);
+    showToast(payload.rejoined ? `已回到房间 ${code}` : `已加入房间 ${code}`);
   } catch (error) {
     showToast(error.message);
   }

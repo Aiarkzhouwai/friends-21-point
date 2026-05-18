@@ -211,6 +211,10 @@ function joinRoom(room, nickname) {
   return player;
 }
 
+function existingRoomPlayer(room, playerId) {
+  return playerId ? room.players.find((player) => player.id === playerId) : null;
+}
+
 function activePlayers(room) {
   return room.players.filter((player) => player.activeFromRound <= room.round);
 }
@@ -748,6 +752,10 @@ async function handle(req, res) {
       if (!room) throw new Error("房间不存在");
       applyTimeouts(room);
       const body = await readBody(req);
+      const existing = existingRoomPlayer(room, body.playerId);
+      if (existing) {
+        return json(res, 200, { room: visibleRoom(room, existing.id), playerId: existing.id, rejoined: true });
+      }
       const player = joinRoom(room, body.nickname);
       return json(res, 200, { room: visibleRoom(room, player.id), playerId: player.id });
     }
