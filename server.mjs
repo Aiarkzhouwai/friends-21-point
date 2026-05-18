@@ -675,6 +675,30 @@ function visibleRoom(room, viewerId) {
   };
 }
 
+function roomSummary(room) {
+  applyTimeouts(room);
+  const house = dealer(room);
+  return {
+    code: room.code,
+    maxPlayers: room.maxPlayers,
+    playerCount: room.players.length,
+    round: room.round,
+    status: room.status,
+    statusLabel: room.gameOverReason ? "已结束" : {
+      lobby: "等待开局",
+      betting: "下注中",
+      dealer_prepare: "庄家发牌",
+      player_turn: "闲家回合",
+      dealer_turn: "庄家回合",
+      settlement: "本局结算",
+    }[room.status] || "牌局中",
+    dealerName: house?.nickname || "",
+    hostName: room.players.find((player) => player.isHost)?.nickname || "",
+    canJoin: room.players.length < room.maxPlayers,
+    updatedAt: room.updatedAt,
+  };
+}
+
 function findPlayer(room, playerId) {
   const player = room.players.find((item) => item.id === playerId);
   if (!player) throw new Error("玩家不存在");
@@ -688,6 +712,15 @@ async function handle(req, res) {
   try {
     if (req.method === "GET" && url.pathname === "/health") {
       return json(res, 200, { ok: true, rooms: rooms.size });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/rooms") {
+      const list = [...rooms.values()]
+        .map(roomSummary)
+        .filter((room) => room.canJoin)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 12);
+      return json(res, 200, { rooms: list });
     }
 
     if (req.method === "POST" && url.pathname === "/api/rooms") {

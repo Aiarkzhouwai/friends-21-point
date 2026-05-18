@@ -179,6 +179,12 @@ label {
   box-shadow: none;
 }
 
+.compact {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
 .large {
   min-height: 58px;
   font-size: 18px;
@@ -205,6 +211,67 @@ label {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
+}
+
+.room-list-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.room-list-head,
+.room-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.room-list-head strong {
+  display: block;
+  color: #fff4c7;
+}
+
+.room-list {
+  display: grid;
+  gap: 8px;
+}
+
+.room-list p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.room-item {
+  width: 100%;
+  min-height: 58px;
+  border-color: rgba(245, 200, 95, 0.18);
+  padding: 8px 10px;
+  text-align: left;
+  background: rgba(5, 9, 14, 0.52);
+}
+
+.room-item strong,
+.room-item small {
+  display: block;
+}
+
+.room-item strong {
+  color: #fff4c7;
+  font-size: 15px;
+}
+
+.room-item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.room-item span {
+  color: #ffe58b;
+  font-weight: 950;
 }
 
 .service-line {

@@ -9,6 +9,8 @@ const state = {
   roomCode: localStorage.getItem("roomCode") || "",
   playerId: localStorage.getItem("playerId") || "",
   pollTimer: null,
+  roomListTimer: null,
+  roomList: [],
   selectedBet: 20,
   showdown: {
     key: "",
@@ -89,6 +91,8 @@ const els = {
   timeLimitInput: document.querySelector("#timeLimitInput"),
   joinRoomBtn: document.querySelector("#joinRoomBtn"),
   continueRoomBtn: document.querySelector("#continueRoomBtn"),
+  refreshRoomsBtn: document.querySelector("#refreshRoomsBtn"),
+  roomList: document.querySelector("#roomList"),
   leaveRoomBtn: document.querySelector("#leaveRoomBtn"),
   backToLobbyBtn: document.querySelector("#backToLobbyBtn"),
   copyRoomBtn: document.querySelector("#copyRoomBtn"),
@@ -444,6 +448,7 @@ function render(animateCards = false, flipDealer = false) {
   if (state.uiMode === "entry") {
     els.entryStatus.textContent = state.apiBase ? "在线服务已连接" : "请先设置后端地址";
     els.continueRoomBtn.hidden = !(state.roomCode && state.playerId);
+    renderRoomList();
     return;
   }
 
@@ -941,10 +946,12 @@ async function createOnlineRoom() {
   }
 }
 
-async function joinOnlineRoom() {
+async function joinOnlineRoom(codeOverride = "") {
   try {
     state.apiBase = normalizeApiBase(els.apiBaseInput.value);
-    const code = els.roomCodeInput.value.trim();
+    const code = String(codeOverride || els.roomCodeInput.value).trim();
+    if (!code) throw new Error("请选择或输入房间号");
+    els.roomCodeInput.value = code;
     const payload = await apiRequest(`/api/rooms/${code}/join`, {
       method: "POST",
       body: JSON.stringify({ nickname: els.nicknameInput.value }),
@@ -954,6 +961,42 @@ async function joinOnlineRoom() {
   } catch (error) {
     showToast(error.message);
   }
+}
+
+async function loadRoomList() {
+  if (state.online && state.uiMode !== "entry") return;
+  try {
+    const data = await apiRequest("/api/rooms");
+    state.roomList = data.rooms || [];
+    renderRoomList();
+  } catch (error) {
+    if (els.roomList) els.roomList.innerHTML = `<p>暂时拉不到房间列表：${error.message}</p>`;
+  }
+}
+
+function renderRoomList() {
+  if (!els.roomList) return;
+  if (!state.roomList.length) {
+    els.roomList.innerHTML = "<p>目前没有可加入的房间。你可以先创建一个。</p>";
+    return;
+  }
+  els.roomList.innerHTML = state.roomList.map((room) => `
+    <button class="room-item" type="button" data-room-code="${room.code}">
+      <div>
+        <strong>${room.code} · ${room.statusLabel}</strong>
+        <small>${room.hostName || "朋友"} 的房间 · 庄家 ${room.dealerName || "-"}</small>
+      </div>
+      <span>${room.playerCount}/${room.maxPlayers}</span>
+    </button>
+  `).join("");
+}
+
+function startRoomListPolling() {
+  window.clearInterval(state.roomListTimer);
+  loadRoomList();
+  state.roomListTimer = window.setInterval(() => {
+    if (state.uiMode === "entry" && !state.online) loadRoomList();
+  }, 5000);
 }
 
 async function syncOnlineRoom() {
@@ -978,6 +1021,7 @@ function leaveRoom() {
   state.uiMode = "entry";
   setMode("entry");
   render();
+  startRoomListPolling();
 }
 
 async function copyRoomCode() {
@@ -992,6 +1036,7 @@ async function copyRoomCode() {
 }
 
 function startPolling() {
+  window.clearInterval(state.roomListTimer);
   window.clearInterval(state.pollTimer);
   state.pollTimer = window.setInterval(syncOnlineRoom, 1800);
 }
@@ -1033,7 +1078,13 @@ els.standBtn.addEventListener("click", stand);
 els.splitBtn.addEventListener("click", () => sendAction("split"));
 els.revealBtn.addEventListener("click", revealDealer);
 els.createRoomBtn.addEventListener("click", createOnlineRoom);
-els.joinRoomBtn.addEventListener("click", joinOnlineRoom);
+els.joinRoomBtn.addEventListener("click", () => joinOnlineRoom());
+els.refreshRoomsBtn.addEventListener("click", loadRoomList);
+els.roomList.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-room-code]");
+  if (!button) return;
+  joinOnlineRoom(button.dataset.roomCode);
+});
 els.continueRoomBtn.addEventListener("click", continueOnlineRoom);
 els.leaveRoomBtn.addEventListener("click", leaveRoom);
 els.backToLobbyBtn.addEventListener("click", () => setMode("lobby"));
@@ -1045,3 +1096,4 @@ els.confirmBetBtn.addEventListener("click", confirmBet);
 state.deck = shuffle(createDeck());
 state.round = 0;
 render();
+startRoomListPolling();
