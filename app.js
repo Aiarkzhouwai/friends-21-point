@@ -242,7 +242,7 @@ function currentViewerHand(viewer) {
 }
 
 function timeLeftLabel() {
-  if (!state.turnDeadlineAt || !["betting", "player_turn", "dealer_turn"].includes(state.status)) return "";
+  if (!state.turnDeadlineAt || !["betting", "dealer_prepare", "player_turn", "dealer_turn"].includes(state.status)) return "";
   const seconds = Math.max(0, Math.ceil((state.turnDeadlineAt - Date.now()) / 1000));
   return `${seconds}s`;
 }
@@ -745,8 +745,8 @@ function render(animateCards = false, flipDealer = false) {
     ? `等待闲家下注${left ? ` · ${left}` : ""}`
     : state.status === "dealer_prepare"
     ? isViewerDealerPrepare
-      ? "下注完成，等待你决定是否洗牌"
-      : "下注完成，等待庄家发牌"
+      ? `下注完成，等待你决定是否洗牌${left ? ` · ${left}` : ""}`
+      : `下注完成，等待庄家发牌${left ? ` · ${left}` : ""}`
     : state.status === "dealer_turn"
     ? isViewerDealerTurn
       ? `庄家回合，${handLabel ? `${handLabel} · ` : ""}等待你决策${left ? ` · ${left}` : ""}`
@@ -948,8 +948,8 @@ function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting
   if (state.status === "settlement") return state.gameOverReason || dealerNotice || "本局已结算";
   if (isViewerBetting) return viewerBetConfirmed ? `已确认下注，等待其他闲家${timer}` : `请选择本局下注${timer}，超时自动下注`;
   if (state.status === "betting") return `${pending ? `${pending} · ` : ""}等待闲家下注${timer}`;
-  if (isViewerDealerPrepare) return "下注完成：你可以洗牌后发牌，或沿用当前牌库直接发牌";
-  if (state.status === "dealer_prepare") return "下注完成，等待庄家选择是否洗牌";
+  if (isViewerDealerPrepare) return `下注完成：5 秒内可洗牌，超时默认不洗牌${timer}`;
+  if (state.status === "dealer_prepare") return `下注完成，等待庄家选择是否洗牌${timer}`;
   if (isViewerDealerTurn) return `${handText}庄家回合：你可以要、不要了，或对子分牌${timer}`;
   if (state.status === "dealer_turn") return `${handText}庄家牌已亮，等待庄家决策${timer}`;
   if (isViewerTurn) return `${handText}轮到你行动${timer}`;
