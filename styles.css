@@ -447,6 +447,8 @@ label {
 
 .room-title {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   min-width: 0;
 }
 
@@ -463,6 +465,25 @@ label {
   font-size: 12px;
 }
 
+.countdown-badge {
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid rgba(245, 200, 95, 0.38);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #fff4c7;
+  background: rgba(245, 200, 95, 0.12);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.countdown-badge:empty,
+.countdown-badge[hidden] {
+  display: none;
+}
+
 .table-counters {
   display: grid;
   justify-items: end;
@@ -472,7 +493,7 @@ label {
 .sound-toggle {
   min-height: 38px;
   border-radius: 999px;
-  padding: 0 12px;
+  padding: 0 10px;
   color: #fff4c7;
   background: rgba(255, 255, 255, 0.07);
   box-shadow: none;
@@ -1421,6 +1442,51 @@ label {
   50% {
     transform: scale(1.08);
     opacity: 1;
+  }
+}
+
+@media (max-width: 430px) {
+  .table-topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "back title counters counters"
+      "back title bgm sound";
+    gap: 6px 8px;
+    align-items: center;
+  }
+
+  .table-topbar .icon-btn {
+    grid-area: back;
+  }
+
+  .room-title {
+    grid-area: title;
+  }
+
+  .table-counters {
+    grid-area: counters;
+    grid-auto-flow: column;
+    gap: 8px;
+    justify-self: end;
+    font-size: 11px;
+  }
+
+  #bgmBtn {
+    grid-area: bgm;
+  }
+
+  #soundToggleBtn {
+    grid-area: sound;
+  }
+
+  .sound-toggle {
+    min-height: 32px;
+    padding: 0 9px;
+    font-size: 11px;
+  }
+
+  .countdown-badge {
+    white-space: normal;
   }
 }
 

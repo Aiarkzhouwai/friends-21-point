@@ -80,6 +80,7 @@ const els = {
   deckCount: document.querySelector("#deckCount"),
   discardCount: document.querySelector("#discardCount"),
   roundLabel: document.querySelector("#roundLabel"),
+  countdownBadge: document.querySelector("#countdownBadge"),
   turnLabel: document.querySelector("#turnLabel"),
   latestEvent: document.querySelector("#latestEvent"),
   toast: document.querySelector("#toast"),
@@ -736,7 +737,9 @@ function render(animateCards = false, flipDealer = false) {
   els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
   els.latestEvent.textContent = dealerNotice || pendingLabel || state.logs?.[0] || "等待玩家操作";
   const countdown = gameCountdownLabel();
-  els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}${countdown ? ` · 剩 ${countdown}` : ""}`;
+  els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}`;
+  els.countdownBadge.textContent = countdown ? `本场剩余 ${countdown}` : "";
+  els.countdownBadge.hidden = !countdown;
   const handLabel = activeHandLabel();
   els.turnLabel.textContent = state.status === "settlement"
     ? state.showdown.showPanel
