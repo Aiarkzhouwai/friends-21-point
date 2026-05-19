@@ -168,6 +168,7 @@ function createPlayer(nickname, seatIndex, isHost = false, settings = DEFAULT_SE
     isHost,
     isDealer: false,
     activeFromRound: 1,
+    lastBet: settings.minBet * 2,
     hands: [createHand(settings.minBet * 2)],
   };
 }
@@ -231,6 +232,10 @@ function defaultBet(room) {
   return Math.min(room.settings.maxBet, Math.max(room.settings.minBet, room.settings.minBet * 2));
 }
 
+function startingBet(room, player) {
+  return player.lastBet || defaultBet(room);
+}
+
 function activeHand(player, room) {
   return player?.hands?.[room.currentHandIndex] || null;
 }
@@ -249,6 +254,15 @@ function setTurnDeadline(room) {
     return;
   }
   room.turnDeadlineAt = Date.now() + room.settings.actionTimeoutSeconds * 1000;
+}
+
+function enterDealerPrepare(room, message = "下注完成，等待庄家选择是否洗牌。") {
+  room.status = "dealer_prepare";
+  room.currentTurnPlayerId = dealer(room).id;
+  room.currentHandIndex = 0;
+  room.turnDeadlineAt = null;
+  room.events.unshift(message);
+  room.updatedAt = Date.now();
 }
 
 function clearDealerFlags(room) {
@@ -296,11 +310,11 @@ function startRound(room) {
   room.dealerRevealed = false;
   room.currentTurnPlayerId = null;
   room.currentHandIndex = 0;
-  room.turnDeadlineAt = null;
+  room.turnDeadlineAt = Date.now() + 5000;
   activePlayers(room).forEach((player) => {
-    player.hands = [createHand(player.isDealer ? 0 : defaultBet(room), { betConfirmed: player.isDealer })];
+    player.hands = [createHand(player.isDealer ? 0 : startingBet(room, player), { betConfirmed: player.isDealer })];
   });
-  room.events.unshift(`第 ${room.round} 局开始，等待闲家下注。`);
+  room.events.unshift(`第 ${room.round} 局开始，闲家有 5 秒下注。`);
   room.settlements = [];
   room.updatedAt = Date.now();
 }
@@ -354,18 +368,26 @@ function placeBet(room, player, betValue) {
   if (player.activeFromRound > room.round) throw new Error("你将在下一局参与");
   const hand = player.hands[0];
   hand.bet = normalizeBet(room, betValue);
+  player.lastBet = hand.bet;
   hand.betConfirmed = true;
   room.events.unshift(`${player.nickname} 下注 ${hand.bet}。`);
   if (idlePlayers(room).every((item) => item.hands[0]?.betConfirmed)) {
-    room.status = "dealer_prepare";
-    room.currentTurnPlayerId = dealer(room).id;
-    room.currentHandIndex = 0;
-    room.turnDeadlineAt = null;
-    room.events.unshift("下注完成，等待庄家选择是否洗牌。");
-    room.updatedAt = Date.now();
+    enterDealerPrepare(room);
     return;
   }
   room.updatedAt = Date.now();
+}
+
+function autoConfirmBets(room) {
+  idlePlayers(room).forEach((player) => {
+    const hand = player.hands[0];
+    if (hand?.betConfirmed) return;
+    hand.bet = normalizeBet(room, hand.bet || startingBet(room, player));
+    hand.betConfirmed = true;
+    player.lastBet = hand.bet;
+    room.events.unshift(`${player.nickname} 超时，系统自动下注 ${hand.bet}。`);
+  });
+  enterDealerPrepare(room, "下注倒计时结束，等待庄家选择是否洗牌。");
 }
 
 function advancePlayerTurn(room) {
@@ -624,6 +646,9 @@ function timeoutAct(room) {
 }
 
 function applyTimeouts(room) {
+  if (room.status === "betting" && room.turnDeadlineAt && Date.now() >= room.turnDeadlineAt) {
+    autoConfirmBets(room);
+  }
   let guard = 0;
   while (
     ["player_turn", "dealer_turn"].includes(room.status) &&
@@ -678,6 +703,7 @@ function visibleRoom(room, viewerId) {
         isHost: player.isHost,
         isDealer: player.isDealer,
         activeFromRound: player.activeFromRound,
+        lastBet: player.lastBet,
         hands: player.hands.map((hand) => ({
           bet: hand.bet,
           betConfirmed: Boolean(hand.betConfirmed),

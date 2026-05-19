@@ -225,9 +225,16 @@ function currentViewerHand(viewer) {
 }
 
 function timeLeftLabel() {
-  if (!state.turnDeadlineAt || !["player_turn", "dealer_turn"].includes(state.status)) return "";
+  if (!state.turnDeadlineAt || !["betting", "player_turn", "dealer_turn"].includes(state.status)) return "";
   const seconds = Math.max(0, Math.ceil((state.turnDeadlineAt - Date.now()) / 1000));
   return `${seconds}s`;
+}
+
+function pendingJoinersLabel() {
+  const pending = (state.players || []).filter((player) => state.status !== "lobby" && player.activeFromRound > state.round);
+  if (!pending.length) return "";
+  const names = pending.map((player) => (player.id === state.viewerId ? "你" : player.name)).join("、");
+  return `${names} 等待下局加入`;
 }
 
 function gameCountdownLabel() {
@@ -511,8 +518,10 @@ function render(animateCards = false, flipDealer = false) {
   const mustHit = viewerHand ? handScore(viewerHand.cards) <= 13 : false;
   const canSplit = Boolean(viewerHand?.canSplit);
   const left = timeLeftLabel();
+  const pendingLabel = pendingJoinersLabel();
   els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
   els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
+  els.latestEvent.textContent = pendingLabel || state.logs?.[0] || "等待玩家操作";
   const countdown = gameCountdownLabel();
   els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}${countdown ? ` · 剩 ${countdown}` : ""}`;
   const handLabel = activeHandLabel();
@@ -521,7 +530,7 @@ function render(animateCards = false, flipDealer = false) {
       ? "本局结算完成"
       : "逐家比牌中"
     : state.status === "betting"
-    ? "等待闲家下注"
+    ? `等待闲家下注${left ? ` · ${left}` : ""}`
     : state.status === "dealer_prepare"
     ? isViewerDealerPrepare
       ? "下注完成，等待你决定是否洗牌"
@@ -698,9 +707,10 @@ function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting
   const timer = left ? ` · ${left}` : "";
   const hand = activeHandLabel();
   const handText = hand ? `正在操作${hand} · ` : "";
+  const pending = pendingJoinersLabel();
   if (state.status === "settlement") return state.gameOverReason || "本局已结算";
-  if (isViewerBetting) return viewerBetConfirmed ? "已确认下注，等待其他闲家" : "请选择本局下注";
-  if (state.status === "betting") return "等待闲家下注";
+  if (isViewerBetting) return viewerBetConfirmed ? `已确认下注，等待其他闲家${timer}` : `请选择本局下注${timer}，超时自动下注`;
+  if (state.status === "betting") return `${pending ? `${pending} · ` : ""}等待闲家下注${timer}`;
   if (isViewerDealerPrepare) return "下注完成：你可以洗牌后发牌，或沿用当前牌库直接发牌";
   if (state.status === "dealer_prepare") return "下注完成，等待庄家选择是否洗牌";
   if (isViewerDealerTurn) return `${handText}庄家回合：你可以要、不要了，或对子分牌${timer}`;

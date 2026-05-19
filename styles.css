@@ -682,14 +682,15 @@ label {
 
 .dealer-badge {
   display: grid;
-  width: 18px;
-  height: 18px;
+  width: 25px;
+  height: 25px;
   place-items: center;
   border-radius: 999px;
   color: #1a1102;
   background: var(--gold);
-  font-size: 10px;
+  font-size: 16px;
   font-weight: 950;
+  box-shadow: 0 0 0 2px rgba(5, 9, 14, 0.85), 0 0 18px rgba(245, 200, 95, 0.45);
 }
 
 .dealer-crown::before {
