@@ -8,7 +8,7 @@ const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 const DEFAULT_SETTINGS = {
   actionTimeoutSeconds: 30,
   roundLimit: 0,
-  timeLimitMinutes: 0,
+  timeLimitMinutes: 15,
   minBet: 10,
   maxBet: 50,
   betStep: 10,
@@ -196,6 +196,7 @@ function createRoom(nickname, maxPlayers = 5, rawSettings = {}) {
     players: [host],
     events: [`${host.nickname} 创建了房间。`],
     chats: [],
+    dissolveVote: null,
     settlements: [],
     updatedAt: Date.now(),
   };
@@ -682,6 +683,50 @@ function sendChat(room, player, message) {
   room.updatedAt = Date.now();
 }
 
+function activeVoteCount(room) {
+  return room.players.length;
+}
+
+function dissolveThreshold(room) {
+  return Math.floor(activeVoteCount(room) / 2) + 1;
+}
+
+function visibleDissolveVote(room) {
+  if (!room.dissolveVote?.active) return null;
+  return {
+    active: true,
+    initiatorId: room.dissolveVote.initiatorId,
+    votes: room.dissolveVote.votes,
+    voteCount: room.dissolveVote.votes.length,
+    threshold: dissolveThreshold(room),
+  };
+}
+
+function voteDissolveRoom(room, player) {
+  if (room.gameOverReason === "房间已解散") throw new Error("房间已解散");
+  if (!room.dissolveVote?.active) {
+    if (!player.isHost) throw new Error("只有房主可以发起解散投票");
+    room.dissolveVote = {
+      active: true,
+      initiatorId: player.id,
+      votes: [player.id],
+      createdAt: Date.now(),
+    };
+    room.events.unshift(`${player.nickname} 发起了解散房间投票。`);
+  } else if (!room.dissolveVote.votes.includes(player.id)) {
+    room.dissolveVote.votes.push(player.id);
+    room.events.unshift(`${player.nickname} 同意解散房间。`);
+  }
+
+  if (room.dissolveVote.votes.length >= dissolveThreshold(room)) {
+    room.status = "closed";
+    room.gameOverReason = "房间已解散";
+    room.turnDeadlineAt = null;
+    room.events.unshift("解散投票通过，房间已解散。");
+  }
+  room.updatedAt = Date.now();
+}
+
 function visibleRoom(room, viewerId) {
   applyTimeouts(room);
   return {
@@ -701,6 +746,7 @@ function visibleRoom(room, viewerId) {
     usedCount: room.used.length,
     events: room.events.slice(0, 5),
     chats: room.chats || [],
+    dissolveVote: visibleDissolveVote(room),
     settlements: room.settlements || [],
     showdownSteps: room.settlements || [],
     updatedAt: room.updatedAt,
@@ -752,10 +798,11 @@ function roomSummary(room) {
       player_turn: "闲家回合",
       dealer_turn: "庄家回合",
       settlement: "本局结算",
+      closed: "已解散",
     }[room.status] || "牌局中",
     dealerName: house?.nickname || "",
     hostName: room.players.find((player) => player.isHost)?.nickname || "",
-    canJoin: room.players.length < room.maxPlayers,
+    canJoin: !room.gameOverReason && room.status !== "closed" && room.players.length < room.maxPlayers,
     updatedAt: room.updatedAt,
   };
 }
@@ -828,6 +875,7 @@ async function handle(req, res) {
       else if (body.type === "deal_keep") prepareDeal(room, player, false);
       else if (body.type === "deal_shuffle") prepareDeal(room, player, true);
       else if (body.type === "chat") sendChat(room, player, body.message);
+      else if (body.type === "dissolve_room") voteDissolveRoom(room, player);
       else if (body.type === "reveal_dealer") startDealerTurn(room);
       else throw new Error("未知操作");
       return json(res, 200, { room: visibleRoom(room, player.id), playerId: player.id });

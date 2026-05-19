@@ -70,8 +70,8 @@
               <label>
                 时间限制
                 <select id="timeLimitInput">
-                  <option value="0" selected>不限时间</option>
-                  <option value="15">15 分钟</option>
+                  <option value="0">不限时间</option>
+                  <option value="15" selected>15 分钟</option>
                   <option value="30">30 分钟</option>
                   <option value="60">60 分钟</option>
                 </select>
@@ -145,6 +145,7 @@
 
         <div class="lobby-action">
           <button class="primary large" id="dealBtn" type="button">开始游戏</button>
+          <button class="ghost" id="dissolveRoomBtn" type="button">发起解散房间</button>
           <p id="lobbyHint">至少 3 人开始；中途加入下一局参与。</p>
         </div>
       </section>
@@ -160,7 +161,9 @@
             <span id="deckCount">牌库 52</span>
             <span id="discardCount">已用 0</span>
           </div>
+          <button class="sound-toggle" id="bgmBtn" type="button">音乐</button>
           <button class="sound-toggle" id="soundToggleBtn" type="button" aria-pressed="false">音效</button>
+          <input class="visually-hidden" id="bgmInput" type="file" accept="audio/*" />
         </header>
 
         <section class="poker-table" aria-label="圆桌牌局">
@@ -189,6 +192,7 @@
 
         <div class="action-panel">
           <div class="turn-note" id="actionHint">等待其他玩家</div>
+          <button class="dissolve-inline" id="dissolveRoomTableBtn" type="button">发起解散房间</button>
           <div class="bet-panel" id="betPanel">
             <div class="bet-head">
               <span>本局下注</span>

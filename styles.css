@@ -328,7 +328,7 @@ label {
 }
 
 .table-topbar {
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
 }
 
 .icon-btn {
@@ -482,6 +482,15 @@ label {
 .sound-toggle.muted {
   color: var(--muted);
   background: rgba(255, 255, 255, 0.035);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .poker-table {
@@ -858,10 +867,15 @@ label {
 }
 
 .score-pill.bust {
-  color: #fff;
-  border-color: transparent;
-  background: var(--red);
+  color: #ff6b63;
+  border-color: rgba(255, 107, 99, 0.42);
+  background: rgba(201, 58, 53, 0.14);
   font-weight: 900;
+}
+
+.state-bust {
+  color: #ff6b63;
+  font-weight: 950;
 }
 
 .tag {
@@ -927,6 +941,18 @@ label {
   text-align: center;
   font-size: 13px;
   font-weight: 800;
+}
+
+.dissolve-inline {
+  min-height: 34px;
+  justify-self: center;
+  border-color: rgba(255, 107, 99, 0.32);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: #ffb5af;
+  background: rgba(201, 58, 53, 0.09);
+  box-shadow: none;
+  font-size: 12px;
 }
 
 .action-buttons {

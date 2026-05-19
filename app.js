@@ -24,6 +24,9 @@ const state = {
   soundMuted: localStorage.getItem("soundMuted") === "true",
   soundUnlocked: false,
   audioContext: null,
+  bgmAudio: null,
+  bgmUrl: "",
+  bgmPlaying: false,
   currentDealerId: "",
   dealerChangeId: "",
   dealerChangeTimer: null,
@@ -81,6 +84,7 @@ const els = {
   toast: document.querySelector("#toast"),
   entryStatus: document.querySelector("#entryStatus"),
   dealBtn: document.querySelector("#dealBtn"),
+  dissolveRoomBtn: document.querySelector("#dissolveRoomBtn"),
   nextRoundBtn: document.querySelector("#nextRoundBtn"),
   hitBtn: document.querySelector("#hitBtn"),
   standBtn: document.querySelector("#standBtn"),
@@ -122,6 +126,9 @@ const els = {
   chatInput: document.querySelector("#chatInput"),
   quickChat: document.querySelector("#quickChat"),
   soundToggleBtn: document.querySelector("#soundToggleBtn"),
+  bgmBtn: document.querySelector("#bgmBtn"),
+  bgmInput: document.querySelector("#bgmInput"),
+  dissolveRoomTableBtn: document.querySelector("#dissolveRoomTableBtn"),
 };
 
 els.apiBaseInput.value = state.apiBase;
@@ -445,6 +452,23 @@ function playSound(type) {
   sounds[type]?.();
 }
 
+function speakPhrase(text) {
+  if (state.soundMuted || !state.soundUnlocked || !("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "zh-CN";
+  utterance.rate = 1.08;
+  utterance.pitch = 1.02;
+  utterance.volume = 0.52;
+  window.speechSynthesis.speak(utterance);
+}
+
+function specialVoice(rankLevel) {
+  if (rankLevel === 3) return "五小牛";
+  if (rankLevel === 1) return "二十一点";
+  return "";
+}
+
 function renderSoundToggle() {
   if (!els.soundToggleBtn) return;
   els.soundToggleBtn.textContent = state.soundMuted ? "静音" : state.soundUnlocked ? "音效开" : "音效";
@@ -501,7 +525,11 @@ function playSnapshotSounds(oldRoom, newRoom) {
     const oldHand = oldHands.get(key);
     if (!oldHand || oldHand.key === handState.key) return;
     if (!oldHand.busted && handState.busted) heardBust = true;
-    if (!heardSpecial && handState.rank > 0 && oldHand.rank !== handState.rank) heardSpecial = true;
+    if (!heardSpecial && handState.rank > 0 && oldHand.rank !== handState.rank) {
+      heardSpecial = true;
+      const phrase = specialVoice(handState.rank);
+      if (phrase) speakPhrase(phrase);
+    }
   });
   if (heardBust) playSound("bust");
   else if (heardSpecial) playSound("special");
@@ -747,6 +775,7 @@ function render(animateCards = false, flipDealer = false) {
   els.dealBtn.textContent = state.online && state.status === "lobby" ? "开始游戏" : "下一局";
   renderBetPanel(isViewerBetting, viewerBetConfirmed, viewerHand?.bet || 20);
   els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn, isViewerBetting, viewerBetConfirmed, isViewerDealerPrepare);
+  renderDissolveControls(viewer);
   renderShowdownBanner();
   renderDanmaku();
   renderSettlement();
@@ -800,11 +829,33 @@ function renderLobby() {
   const canStart = state.players.length >= 3 && (state.status === "lobby" || state.status === "settlement") && !state.gameOverReason;
   els.dealBtn.disabled = !canStart;
   els.dealBtn.textContent = state.status === "settlement" ? "下一局" : "开始游戏";
+  renderDissolveControls(state.players.find((player) => player.id === state.viewerId));
   els.lobbyHint.textContent = state.gameOverReason
     ? state.gameOverReason
     : canStart
       ? "准备好了就开始；新加入玩家下一局参与。"
       : "至少 3 人开始；可以先把房间号发给朋友。";
+}
+
+function dissolveVoteLabel(viewer) {
+  const vote = state.dissolveVote;
+  if (state.gameOverReason === "房间已解散") return "房间已解散";
+  if (vote?.active) {
+    const voted = vote.votes?.includes(viewer?.id);
+    return voted ? `已同意解散 ${vote.voteCount}/${vote.threshold}` : `同意解散 ${vote.voteCount}/${vote.threshold}`;
+  }
+  return viewer?.isHost ? "发起解散房间" : "";
+}
+
+function renderDissolveControls(viewer) {
+  const label = dissolveVoteLabel(viewer);
+  [els.dissolveRoomBtn, els.dissolveRoomTableBtn].forEach((button) => {
+    if (!button) return;
+    const show = Boolean(label) && state.online && state.status !== "closed";
+    button.hidden = !show;
+    button.disabled = state.gameOverReason === "房间已解散" || Boolean(state.dissolveVote?.votes?.includes(viewer?.id));
+    button.textContent = label || "发起解散房间";
+  });
 }
 
 function renderRuleStrip() {
@@ -1069,11 +1120,11 @@ function canRevealHand(player) {
 
 function getPlayerStateLabel(player) {
   if (player.isDealer) {
-    if (player.hands.some((hand) => hand.busted)) return "爆牌";
+    if (player.hands.some((hand) => hand.busted)) return '<span class="state-bust">爆牌</span>';
     if (state.status === "dealer_turn") return player.id === state.viewerId ? "你决策" : "庄家决策";
     return state.dealerRevealed ? "庄家亮牌" : "暗牌";
   }
-  if (player.hands.some((hand) => hand.busted)) return "爆牌";
+  if (player.hands.some((hand) => hand.busted)) return '<span class="state-bust">爆牌</span>';
   const revealedSpecial = player.hands
     .map((hand) => {
       const visible = hand.cards.length > 0 && hand.cards.every((card, index) => !isCardHidden(card, player, index));
@@ -1328,6 +1379,8 @@ async function sendAction(type) {
       reveal_dealer: "crown",
     };
     playSound(soundByAction[type]);
+    if (type === "hit") speakPhrase("来");
+    if (type === "stand") speakPhrase("算了算了");
     const payload = await apiRequest(`/api/rooms/${state.roomCode}/action`, {
       method: "POST",
       body: JSON.stringify({ playerId: state.playerId, type }),
@@ -1336,6 +1389,74 @@ async function sendAction(type) {
   } catch (error) {
     showToast(error.message);
   }
+}
+
+async function voteDissolveRoom() {
+  try {
+    const payload = await apiRequest(`/api/rooms/${state.roomCode}/action`, {
+      method: "POST",
+      body: JSON.stringify({ playerId: state.playerId, type: "dissolve_room" }),
+    });
+    applyOnlineSnapshot(payload, { animate: false });
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+function ensureBgmAudio() {
+  if (state.bgmAudio) return state.bgmAudio;
+  state.bgmAudio = new Audio();
+  state.bgmAudio.loop = true;
+  state.bgmAudio.volume = 0.22;
+  return state.bgmAudio;
+}
+
+function renderBgmButton() {
+  if (!els.bgmBtn) return;
+  els.bgmBtn.textContent = state.bgmPlaying ? "音乐关" : state.bgmUrl ? "音乐开" : "音乐";
+  els.bgmBtn.classList.toggle("muted", !state.bgmPlaying);
+}
+
+async function toggleBgm() {
+  unlockSound();
+  const audio = ensureBgmAudio();
+  if (!state.bgmUrl) {
+    els.bgmInput.click();
+    return;
+  }
+  if (state.bgmPlaying) {
+    audio.pause();
+    state.bgmPlaying = false;
+    renderBgmButton();
+    return;
+  }
+  try {
+    await audio.play();
+    state.bgmPlaying = true;
+  } catch {
+    showToast("手机浏览器需要再点一次音乐按钮");
+  }
+  renderBgmButton();
+}
+
+function loadBgmFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (state.bgmUrl) URL.revokeObjectURL(state.bgmUrl);
+  state.bgmUrl = URL.createObjectURL(file);
+  const audio = ensureBgmAudio();
+  audio.src = state.bgmUrl;
+  audio.play()
+    .then(() => {
+      state.bgmPlaying = true;
+      renderBgmButton();
+      showToast("房间音乐已播放");
+    })
+    .catch(() => {
+      state.bgmPlaying = false;
+      renderBgmButton();
+      showToast("已选择音乐，再点音乐按钮播放");
+    });
 }
 
 async function sendChat(message) {
@@ -1415,10 +1536,15 @@ els.quickChat.addEventListener("click", (event) => {
   sendChat(button.dataset.chat);
 });
 els.soundToggleBtn.addEventListener("click", toggleSound);
+els.bgmBtn.addEventListener("click", toggleBgm);
+els.bgmInput.addEventListener("change", loadBgmFile);
+els.dissolveRoomBtn.addEventListener("click", voteDissolveRoom);
+els.dissolveRoomTableBtn.addEventListener("click", voteDissolveRoom);
 document.addEventListener("pointerdown", unlockSound, { once: true });
 
 state.deck = shuffle(createDeck());
 state.round = 0;
 renderSoundToggle();
+renderBgmButton();
 render();
 startRoomListPolling();
