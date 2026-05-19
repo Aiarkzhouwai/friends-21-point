@@ -409,6 +409,17 @@ function unlockSound() {
   renderSoundToggle();
 }
 
+function primeAudio() {
+  unlockSound();
+  const audio = ensureBgmAudio();
+  audio.preload = "auto";
+  try {
+    audio.load();
+  } catch {
+    // Some mobile browsers ignore manual preload until playback is requested.
+  }
+}
+
 function tone(context, frequency, start, duration, gainValue, type = "sine") {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
@@ -1611,6 +1622,9 @@ function ensureBgmAudio() {
   if (state.bgmAudio) return state.bgmAudio;
   state.bgmAudio = new Audio(state.bgmUrl || DEFAULT_BGM_SRC);
   state.bgmAudio.loop = true;
+  state.bgmAudio.preload = "auto";
+  state.bgmAudio.setAttribute("playsinline", "");
+  state.bgmAudio.setAttribute("webkit-playsinline", "");
   state.bgmAudio.volume = state.bgmBaseVolume;
   return state.bgmAudio;
 }
@@ -1622,9 +1636,8 @@ function renderBgmButton() {
 }
 
 async function toggleBgm() {
-  unlockSound();
+  primeAudio();
   const audio = ensureBgmAudio();
-  if (!audio.src && state.bgmUrl) audio.src = state.bgmUrl;
   if (!state.bgmUrl) {
     els.bgmInput.click();
     return;
@@ -1636,10 +1649,17 @@ async function toggleBgm() {
     return;
   }
   try {
+    if (!audio.src || audio.src !== new URL(state.bgmUrl, window.location.href).href) {
+      audio.src = state.bgmUrl;
+    }
+    audio.volume = state.bgmBaseVolume;
+    audio.muted = false;
     await audio.play();
     state.bgmPlaying = true;
-  } catch {
-    showToast("手机浏览器需要再点一次音乐按钮");
+    showToast("音乐已播放");
+  } catch (error) {
+    state.bgmPlaying = false;
+    showToast("音乐没启动，再点一次试试");
   }
   renderBgmButton();
 }
@@ -1764,7 +1784,7 @@ els.roomModal.addEventListener("click", (event) => {
     render(false);
   }
 });
-document.addEventListener("pointerdown", unlockSound, { once: true });
+document.addEventListener("pointerdown", primeAudio, { once: true });
 
 state.deck = shuffle(createDeck());
 state.round = 0;
