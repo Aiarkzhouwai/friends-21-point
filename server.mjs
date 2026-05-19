@@ -245,6 +245,12 @@ function existingRoomPlayer(room, playerId) {
   return playerId ? room.players.find((player) => player.id === playerId) : null;
 }
 
+function existingLobbyPlayerByNickname(room, nickname) {
+  if (room.status !== "lobby") return null;
+  const normalized = normalizeNickname(nickname);
+  return room.players.find((player) => player.nickname === normalized) || null;
+}
+
 function activePlayers(room) {
   return room.players.filter((player) => player.activeFromRound <= room.round);
 }
@@ -905,6 +911,10 @@ async function handle(req, res) {
       const existing = existingRoomPlayer(room, body.playerId);
       if (existing) {
         return json(res, 200, { room: visibleRoom(room, existing.id), playerId: existing.id, rejoined: true });
+      }
+      const existingByNickname = existingLobbyPlayerByNickname(room, body.nickname);
+      if (existingByNickname) {
+        return json(res, 200, { room: visibleRoom(room, existingByNickname.id), playerId: existingByNickname.id, rejoined: true });
       }
       const player = joinRoom(room, body.nickname);
       return json(res, 200, { room: visibleRoom(room, player.id), playerId: player.id });

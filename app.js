@@ -2,7 +2,7 @@ const suits = ["♠", "♥", "♣", "♦"];
 const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const DEFAULT_API_BASE = "https://friends-21-point-api.onrender.com";
 const DEFAULT_BGM_SRC = "./assets/audio/room-bgm.m4a";
-const DEFAULT_BGM_VOLUME = 0.07;
+const DEFAULT_BGM_VOLUME = 0.04;
 const nicknamePrefixes = ["无敌", "超级", "发财", "幸运", "快乐", "威猛", "闪亮", "稳赢", "豪气", "暴富", "神勇", "如意"];
 
 if (localStorage.getItem("soundDefaultV2") !== "true") {
@@ -150,7 +150,14 @@ const els = {
 
 els.apiBaseInput.value = state.apiBase;
 els.roomCodeInput.value = state.roomCode;
-els.continueRoomBtn.hidden = !(state.roomCode && state.playerId);
+
+function renderRecentRoomButton() {
+  const hasRecentRoom = Boolean(state.roomCode && state.playerId);
+  els.continueRoomBtn.hidden = !hasRecentRoom;
+  els.continueRoomBtn.textContent = hasRecentRoom ? `继续上次房间 ${state.roomCode}` : "继续上次房间";
+}
+
+renderRecentRoomButton();
 
 function randomItem(items) {
   return items[Math.floor(Math.random() * items.length)];
@@ -435,7 +442,7 @@ function playSound(type) {
   if (!context) return;
   duckBgm(900);
   const now = context.currentTime + 0.01;
-  const quiet = 0.045;
+  const quiet = 0.078;
   const sounds = {
     deal: () => {
       noiseTap(context, now, 0.08, 0.032, 1500);
@@ -478,14 +485,14 @@ function speakPhrase(text) {
   utterance.lang = "zh-CN";
   utterance.rate = 1.08;
   utterance.pitch = 1.02;
-  utterance.volume = 0.52;
+  utterance.volume = 0.78;
   window.speechSynthesis.speak(utterance);
 }
 
 function duckBgm(duration = 1000) {
   const audio = state.bgmAudio;
   if (!state.bgmPlaying || !audio) return;
-  audio.volume = Math.min(audio.volume, state.bgmBaseVolume * 0.32);
+  audio.volume = Math.min(audio.volume, state.bgmBaseVolume * 0.12);
   window.clearTimeout(state.bgmDuckTimer);
   state.bgmDuckTimer = window.setTimeout(() => {
     if (state.bgmPlaying && state.bgmAudio) state.bgmAudio.volume = state.bgmBaseVolume;
@@ -797,7 +804,7 @@ function render(animateCards = false, flipDealer = false) {
 
   if (state.uiMode === "entry") {
     els.entryStatus.textContent = state.apiBase ? "在线服务已连接" : "请先设置后端地址";
-    els.continueRoomBtn.hidden = !(state.roomCode && state.playerId);
+    renderRecentRoomButton();
     clearRoomModal();
     renderRoomList();
     return;
@@ -982,14 +989,17 @@ function renderRoomModal(viewer) {
 
   if (state.gameOverReason) {
     const dissolved = isDissolvedRoom();
-    html = `
-      <div class="room-modal-card ${dissolved ? "danger" : ""}">
-        <span class="eyebrow">${dissolved ? "房间已解散" : "本场结束"}</span>
-        <h2>${dissolved ? "解散投票已通过" : state.gameOverReason}</h2>
-        ${dissolved ? "<p>本房间已经关闭，可以回到大厅重新创建或加入房间。</p>" : `<ul class="final-score-list">${finalScoreRows()}</ul>`}
-        <button class="primary large" id="modalReturnHomeBtn" type="button">返回大厅</button>
-      </div>
-    `;
+    const canShowFinal = dissolved || state.status !== "settlement" || state.showdown.showPanel;
+    if (canShowFinal) {
+      html = `
+        <div class="room-modal-card ${dissolved ? "danger" : ""}">
+          <span class="eyebrow">${dissolved ? "房间已解散" : "本场结束"}</span>
+          <h2>${dissolved ? "解散投票已通过" : state.gameOverReason}</h2>
+          ${dissolved ? "<p>本房间已经关闭，可以回到大厅重新创建或加入房间。</p>" : `<ul class="final-score-list">${finalScoreRows()}</ul>`}
+          <button class="primary large" id="modalReturnHomeBtn" type="button">返回大厅</button>
+        </div>
+      `;
+    }
   } else if (vote?.active) {
     const voteKey = `${vote.initiatorId}-${vote.voteCount}`;
     const voted = vote.votes?.includes(viewer?.id);
@@ -1505,19 +1515,27 @@ async function continueOnlineRoom() {
   await syncOnlineRoom();
 }
 
-function leaveRoom() {
+function leaveRoom(options = {}) {
+  const forgetRecent = Boolean(options.forgetRecent);
   window.clearInterval(state.pollTimer);
   window.clearTimeout(state.showdown.timer);
   window.clearTimeout(state.cinematicTimer);
   state.online = false;
   state.uiMode = "entry";
-  state.roomCode = "";
-  state.playerId = "";
   state.showdown = { key: "", index: 0, showPanel: false, timer: null };
   state.cinematicQueue = [];
   state.cinematicActive = null;
-  localStorage.removeItem("roomCode");
-  localStorage.removeItem("playerId");
+  if (forgetRecent) {
+    state.roomCode = "";
+    state.playerId = "";
+    localStorage.removeItem("roomCode");
+    localStorage.removeItem("playerId");
+  } else {
+    if (state.roomCode) localStorage.setItem("roomCode", state.roomCode);
+    if (state.playerId) localStorage.setItem("playerId", state.playerId);
+  }
+  els.roomCodeInput.value = state.roomCode;
+  renderRecentRoomButton();
   clearRoomModal();
   if (els.cinematicOverlay) {
     els.cinematicOverlay.className = "cinematic-overlay";
@@ -1724,7 +1742,7 @@ els.dissolveRoomBtn.addEventListener("click", voteDissolveRoom);
 els.dissolveRoomTableBtn.addEventListener("click", voteDissolveRoom);
 els.roomModal.addEventListener("click", (event) => {
   if (event.target.closest("#modalReturnHomeBtn")) {
-    leaveRoom();
+    leaveRoom({ forgetRecent: true });
     return;
   }
   if (event.target.closest("#modalDissolveAgreeBtn")) {
