@@ -249,6 +249,10 @@ function isBust(cards) {
   return handScore(cards) > 21;
 }
 
+function mustHitHand(hand) {
+  return handScore(hand.cards) <= 13 && handRank(hand.cards).level === 0;
+}
+
 function currentPlayer() {
   if (state.currentTurnPlayerId) {
     return state.players.find((player) => player.id === state.currentTurnPlayerId);
@@ -679,7 +683,9 @@ function hit() {
 
   const rank = handRank(hand.cards);
   if (rank.level > 0) {
+    hand.stood = true;
     showToast(`${player.name} 触发 ${rank.label}`);
+    nextPlayer();
   }
 
   if (isBust(hand.cards)) {
@@ -702,7 +708,7 @@ function stand() {
   }
   const player = currentPlayer();
   const hand = player.hands[0];
-  if (handScore(hand.cards) <= 13) {
+  if (mustHitHand(hand)) {
     showToast("小于等于 13 必须要牌。");
     return;
   }
@@ -726,7 +732,7 @@ function nextPlayer() {
 function dealerTurn() {
   const house = dealer();
   const hand = house.hands[0];
-  while (handScore(hand.cards) <= 13) {
+  while (mustHitHand(hand)) {
     const card = drawCard();
     hand.cards.push(card);
     addLog(`庄家补到 ${card.rank}${card.suit}。`);
@@ -831,7 +837,7 @@ function render(animateCards = false, flipDealer = false) {
   const isViewerBetting = state.status === "betting" && viewer && !viewer.isDealer && viewer.activeFromRound <= state.round;
   const viewerBetConfirmed = Boolean(viewer?.hands?.[0]?.betConfirmed);
   const viewerHand = currentViewerHand(viewer);
-  const mustHit = viewerHand ? handScore(viewerHand.cards) <= 13 : false;
+  const mustHit = viewerHand ? mustHitHand(viewerHand) : false;
   const canSplit = Boolean(viewerHand?.canSplit);
   const left = timeLeftLabel();
   const pendingLabel = pendingJoinersLabel();
@@ -1001,9 +1007,9 @@ function renderRoomModal(viewer) {
       `;
     }
   } else if (vote?.active) {
-    const voteKey = `${vote.initiatorId}-${vote.voteCount}`;
+    const voteKey = `${vote.initiatorId}`;
     const voted = vote.votes?.includes(viewer?.id);
-    if (voted || state.dismissedDissolveKey !== voteKey) {
+    if (!voted && state.dismissedDissolveKey !== voteKey) {
       html = `
         <div class="room-modal-card danger">
           <span class="eyebrow">解散投票</span>
@@ -1746,6 +1752,9 @@ els.roomModal.addEventListener("click", (event) => {
     return;
   }
   if (event.target.closest("#modalDissolveAgreeBtn")) {
+    const vote = state.dissolveVote;
+    if (vote?.active) state.dismissedDissolveKey = `${vote.initiatorId}`;
+    clearRoomModal();
     voteDissolveRoom();
     return;
   }

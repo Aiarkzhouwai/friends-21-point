@@ -146,6 +146,19 @@ function isBust(cards) {
   return handScore(cards) > 21;
 }
 
+function mustHitHand(hand) {
+  return handScore(hand.cards) <= 13 && handRank(hand.cards).level === 0;
+}
+
+function finishMadeHand(room, player, handIndex = 0, withCinematic = false) {
+  const hand = player.hands[handIndex];
+  if (!hand || handDone(hand) || handRank(hand.cards).level === 0) return false;
+  hand.stood = true;
+  if (withCinematic) addCinematic(room, player, handIndex);
+  room.events.unshift(`${player.nickname} 第 ${handIndex + 1} 手 ${handLabel(hand.cards)}。`);
+  return true;
+}
+
 function clampNumber(value, fallback, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -365,13 +378,20 @@ function dealInitialCards(room) {
       player.hands[0].cards.push(drawCard(room));
     });
   }
+  activePlayers(room).forEach((player) => {
+    finishMadeHand(room, player, 0);
+  });
   room.status = "player_turn";
-  const first = idlePlayers(room)[0];
+  const first = idlePlayers(room).find((player) => player.hands.some((hand) => !handDone(hand)));
   room.currentTurnPlayerId = first?.id || null;
   room.currentHandIndex = 0;
-  setTurnDeadline(room);
   room.events.unshift("下注完成，开始发牌。");
   room.updatedAt = Date.now();
+  if (first) {
+    setTurnDeadline(room);
+  } else {
+    startDealerTurn(room);
+  }
 }
 
 function prepareDeal(room, player, shouldShuffle = false) {
@@ -459,9 +479,13 @@ function startDealerTurn(room) {
   room.dealerRevealed = true;
   room.currentTurnPlayerId = dealer(room).id;
   room.currentHandIndex = 0;
-  setTurnDeadline(room);
   room.events.unshift("闲家行动结束，庄家亮牌。");
   room.updatedAt = Date.now();
+  if (handDone(activeHand(dealer(room), room))) {
+    advanceDealerTurn(room);
+    return;
+  }
+  setTurnDeadline(room);
 }
 
 function advanceDealerTurn(room) {
@@ -508,7 +532,7 @@ function dealerStand(room, player) {
   if (room.status !== "dealer_turn") throw new Error("当前不是庄家回合");
   if (player.id !== house.id) throw new Error("只有庄家可以操作");
   const hand = activeHand(house, room);
-  if (handScore(hand.cards) <= 13) throw new Error("小于等于 13 必须要牌");
+  if (mustHitHand(hand)) throw new Error("小于等于 13 必须要牌");
   hand.stood = true;
   addCinematic(room, house, room.currentHandIndex);
   room.events.unshift(`庄家第 ${room.currentHandIndex + 1} 手 ${handScore(hand.cards)} 点停牌。`);
@@ -656,7 +680,7 @@ function stand(room, player) {
   if (room.status !== "player_turn") throw new Error("当前不能停牌");
   if (room.currentTurnPlayerId !== player.id) throw new Error("还没轮到你");
   const hand = activeHand(player, room);
-  if (handScore(hand.cards) <= 13) throw new Error("小于等于 13 必须要牌");
+  if (mustHitHand(hand)) throw new Error("小于等于 13 必须要牌");
   hand.stood = true;
   addCinematic(room, player, room.currentHandIndex);
   room.events.unshift(`${player.nickname} 第 ${room.currentHandIndex + 1} 手停牌。`);
@@ -685,7 +709,7 @@ function timeoutAct(room) {
   const hand = activeHand(player, room);
   if (!player || !hand || handDone(hand)) return;
   let drew = 0;
-  while (handScore(hand.cards) <= 13 && !isBust(hand.cards) && drew < 8) {
+  while (mustHitHand(hand) && !isBust(hand.cards) && drew < 8) {
     hand.cards.push(drawCard(room));
     drew += 1;
   }
@@ -821,8 +845,8 @@ function visibleRoom(room, viewerId) {
         room.status === "settlement" ||
         player.id === viewerId ||
         (player.isDealer && room.dealerRevealed) ||
-        hand.busted ||
-        (hand.stood && handRank(hand.cards).level > 0);
+        (!player.isDealer && hand.busted) ||
+        (!player.isDealer && hand.stood && handRank(hand.cards).level > 0);
       const canSeeCard = (hand, index) => canSeeHand(hand) || index >= 2;
       return {
         id: player.id,
