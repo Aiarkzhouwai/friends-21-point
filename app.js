@@ -1,6 +1,7 @@
 const suits = ["♠", "♥", "♣", "♦"];
 const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const DEFAULT_API_BASE = "https://friends-21-point-api.onrender.com";
+const DEFAULT_BGM_SRC = "./assets/audio/room-bgm.m4a";
 const nicknamePrefixes = ["无敌", "超级", "发财", "幸运", "快乐", "威猛", "闪亮", "稳赢", "豪气", "暴富", "神勇", "如意"];
 
 const state = {
@@ -25,7 +26,7 @@ const state = {
   soundUnlocked: false,
   audioContext: null,
   bgmAudio: null,
-  bgmUrl: "",
+  bgmUrl: DEFAULT_BGM_SRC,
   bgmPlaying: false,
   currentDealerId: "",
   dealerChangeId: "",
@@ -1405,21 +1406,22 @@ async function voteDissolveRoom() {
 
 function ensureBgmAudio() {
   if (state.bgmAudio) return state.bgmAudio;
-  state.bgmAudio = new Audio();
+  state.bgmAudio = new Audio(state.bgmUrl || DEFAULT_BGM_SRC);
   state.bgmAudio.loop = true;
-  state.bgmAudio.volume = 0.22;
+  state.bgmAudio.volume = 0.14;
   return state.bgmAudio;
 }
 
 function renderBgmButton() {
   if (!els.bgmBtn) return;
-  els.bgmBtn.textContent = state.bgmPlaying ? "音乐关" : state.bgmUrl ? "音乐开" : "音乐";
+  els.bgmBtn.textContent = state.bgmPlaying ? "音乐关" : "音乐";
   els.bgmBtn.classList.toggle("muted", !state.bgmPlaying);
 }
 
 async function toggleBgm() {
   unlockSound();
   const audio = ensureBgmAudio();
+  if (!audio.src && state.bgmUrl) audio.src = state.bgmUrl;
   if (!state.bgmUrl) {
     els.bgmInput.click();
     return;
@@ -1442,10 +1444,11 @@ async function toggleBgm() {
 function loadBgmFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  if (state.bgmUrl) URL.revokeObjectURL(state.bgmUrl);
+  if (state.bgmUrl?.startsWith("blob:")) URL.revokeObjectURL(state.bgmUrl);
   state.bgmUrl = URL.createObjectURL(file);
   const audio = ensureBgmAudio();
   audio.src = state.bgmUrl;
+  audio.volume = 0.14;
   audio.play()
     .then(() => {
       state.bgmPlaying = true;
