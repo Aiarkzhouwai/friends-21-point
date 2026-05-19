@@ -420,6 +420,18 @@ function primeAudio() {
   }
 }
 
+function preloadBgm() {
+  if (!state.bgmUrl || state.bgmUrl.startsWith("blob:")) return;
+  const audio = ensureBgmAudio();
+  audio.preload = "auto";
+  audio.volume = state.bgmBaseVolume;
+  try {
+    audio.load();
+  } catch {
+    // Preload is a hint; playback still works from the music button.
+  }
+}
+
 function tone(context, frequency, start, duration, gainValue, type = "sine") {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
@@ -1785,6 +1797,7 @@ els.roomModal.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("pointerdown", primeAudio, { once: true });
+window.addEventListener("load", preloadBgm, { once: true });
 
 state.deck = shuffle(createDeck());
 state.round = 0;
