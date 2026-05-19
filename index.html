@@ -160,6 +160,7 @@
             <span id="deckCount">牌库 52</span>
             <span id="discardCount">已用 0</span>
           </div>
+          <button class="sound-toggle" id="soundToggleBtn" type="button" aria-pressed="false">音效</button>
         </header>
 
         <section class="poker-table" aria-label="圆桌牌局">
@@ -209,16 +210,16 @@
             <button class="success" id="revealBtn" type="button">亮庄家牌</button>
           </div>
           <div class="chat-panel">
+            <form class="chat-form" id="chatForm">
+              <input id="chatInput" maxlength="40" placeholder="喷两句垃圾话..." autocomplete="off" />
+              <button class="ghost compact" type="submit">发送</button>
+            </form>
             <div class="quick-chat" id="quickChat">
               <button type="button" data-chat="就这？">就这？</button>
               <button type="button" data-chat="别演了">别演了</button>
               <button type="button" data-chat="发我好牌">发我好牌</button>
               <button type="button" data-chat="庄家要爆！">庄家要爆！</button>
             </div>
-            <form class="chat-form" id="chatForm">
-              <input id="chatInput" maxlength="40" placeholder="喷两句垃圾话..." autocomplete="off" />
-              <button class="ghost compact" type="submit">发送</button>
-            </form>
           </div>
         </div>
 

@@ -20,6 +20,10 @@ const state = {
     timer: null,
   },
   seenChatIds: new Set(),
+  heardChatIds: new Set(),
+  soundMuted: localStorage.getItem("soundMuted") === "true",
+  soundUnlocked: false,
+  audioContext: null,
   currentDealerId: "",
   dealerChangeId: "",
   dealerChangeTimer: null,
@@ -117,6 +121,7 @@ const els = {
   chatForm: document.querySelector("#chatForm"),
   chatInput: document.querySelector("#chatInput"),
   quickChat: document.querySelector("#quickChat"),
+  soundToggleBtn: document.querySelector("#soundToggleBtn"),
 };
 
 els.apiBaseInput.value = state.apiBase;
@@ -350,6 +355,172 @@ function showToast(message) {
   els.toast.classList.add("show");
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => els.toast.classList.remove("show"), 1800);
+}
+
+function ensureAudioContext() {
+  if (state.audioContext) return state.audioContext;
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  state.audioContext = new AudioContextClass();
+  return state.audioContext;
+}
+
+function unlockSound() {
+  if (state.soundMuted || state.soundUnlocked) return;
+  const context = ensureAudioContext();
+  if (!context) return;
+  context.resume?.();
+  state.soundUnlocked = true;
+  renderSoundToggle();
+}
+
+function tone(context, frequency, start, duration, gainValue, type = "sine") {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.connect(gain).connect(context.destination);
+  oscillator.start(start);
+  oscillator.stop(start + duration + 0.02);
+}
+
+function noiseTap(context, start, duration, gainValue, frequency = 1600) {
+  const sampleRate = context.sampleRate;
+  const buffer = context.createBuffer(1, Math.max(1, Math.floor(sampleRate * duration)), sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+  const source = context.createBufferSource();
+  const filter = context.createBiquadFilter();
+  const gain = context.createGain();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(frequency, start);
+  filter.Q.setValueAtTime(0.8, start);
+  gain.gain.setValueAtTime(gainValue, start);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  source.buffer = buffer;
+  source.connect(filter).connect(gain).connect(context.destination);
+  source.start(start);
+}
+
+function playSound(type) {
+  if (state.soundMuted || !state.soundUnlocked) return;
+  const context = ensureAudioContext();
+  if (!context) return;
+  const now = context.currentTime + 0.01;
+  const quiet = 0.045;
+  const sounds = {
+    deal: () => {
+      noiseTap(context, now, 0.08, 0.032, 1500);
+      tone(context, 310, now + 0.02, 0.06, quiet * 0.55, "triangle");
+    },
+    hit: () => {
+      noiseTap(context, now, 0.06, 0.026, 1800);
+      tone(context, 420, now + 0.018, 0.07, quiet * 0.5, "triangle");
+    },
+    stand: () => tone(context, 210, now, 0.12, quiet * 0.62, "sine"),
+    bust: () => {
+      tone(context, 260, now, 0.1, quiet * 0.65, "sawtooth");
+      tone(context, 170, now + 0.09, 0.14, quiet * 0.55, "sawtooth");
+    },
+    special: () => {
+      [620, 820, 1080].forEach((frequency, index) => tone(context, frequency, now + index * 0.065, 0.12, quiet * 0.58, "triangle"));
+    },
+    chip: () => {
+      noiseTap(context, now, 0.12, 0.035, 2400);
+      tone(context, 520, now + 0.035, 0.08, quiet * 0.45, "square");
+    },
+    chat: () => tone(context, 760, now, 0.06, quiet * 0.34, "sine"),
+    crown: () => {
+      tone(context, 680, now, 0.12, quiet * 0.55, "triangle");
+      tone(context, 940, now + 0.09, 0.16, quiet * 0.48, "triangle");
+    },
+    bet: () => {
+      noiseTap(context, now, 0.07, 0.026, 2100);
+      tone(context, 480, now + 0.02, 0.05, quiet * 0.42, "square");
+    },
+  };
+  sounds[type]?.();
+}
+
+function renderSoundToggle() {
+  if (!els.soundToggleBtn) return;
+  els.soundToggleBtn.textContent = state.soundMuted ? "静音" : state.soundUnlocked ? "音效开" : "音效";
+  els.soundToggleBtn.classList.toggle("muted", state.soundMuted);
+  els.soundToggleBtn.setAttribute("aria-pressed", String(!state.soundMuted));
+}
+
+function toggleSound() {
+  state.soundMuted = !state.soundMuted;
+  localStorage.setItem("soundMuted", String(state.soundMuted));
+  if (!state.soundMuted) {
+    unlockSound();
+    playSound("stand");
+  }
+  renderSoundToggle();
+}
+
+function totalCards(room) {
+  return (room?.players || []).reduce(
+    (sum, player) => sum + (player.hands || []).reduce((handSum, hand) => handSum + (hand.cards?.length || 0), 0),
+    0,
+  );
+}
+
+function handSoundKey(player, hand, index) {
+  return `${player.id}:${index}:${hand.cards?.map((card) => card.id || `${card.rank}${card.suit}`).join("|") || ""}`;
+}
+
+function roomHandStates(room) {
+  const map = new Map();
+  (room?.players || []).forEach((player) => {
+    (player.hands || []).forEach((hand, index) => {
+      map.set(`${player.id}:${index}`, {
+        busted: Boolean(hand.busted) || isBust(hand.cards || []),
+        rank: handRank(hand.cards || []).level,
+        key: handSoundKey(player, hand, index),
+      });
+    });
+  });
+  return map;
+}
+
+function playSnapshotSounds(oldRoom, newRoom) {
+  if (!oldRoom || !newRoom) return;
+  const oldCards = totalCards(oldRoom);
+  const newCards = totalCards(newRoom);
+  if (newCards > oldCards) playSound(newCards - oldCards > 1 ? "deal" : "hit");
+
+  const oldHands = roomHandStates(oldRoom);
+  const newHands = roomHandStates(newRoom);
+  let heardSpecial = false;
+  let heardBust = false;
+  newHands.forEach((handState, key) => {
+    const oldHand = oldHands.get(key);
+    if (!oldHand || oldHand.key === handState.key) return;
+    if (!oldHand.busted && handState.busted) heardBust = true;
+    if (!heardSpecial && handState.rank > 0 && oldHand.rank !== handState.rank) heardSpecial = true;
+  });
+  if (heardBust) playSound("bust");
+  else if (heardSpecial) playSound("special");
+
+  const oldStatus = oldRoom.status;
+  const newStatus = newRoom.status;
+  if (oldStatus !== "settlement" && newStatus === "settlement") playSound("chip");
+  if (oldStatus !== "betting" && newStatus === "betting") playSound("bet");
+
+  const oldDealerId = oldRoom.players?.find((player) => player.isDealer)?.id || "";
+  const newDealerId = newRoom.players?.find((player) => player.isDealer)?.id || "";
+  if (oldDealerId && newDealerId && oldDealerId !== newDealerId) playSound("crown");
+
+  (newRoom.chats || []).forEach((chat) => {
+    if (state.heardChatIds.has(chat.id)) return;
+    state.heardChatIds.add(chat.id);
+    const fromSelf = chat.playerId === state.playerId;
+    if (!fromSelf) playSound("chat");
+  });
 }
 
 function hit() {
@@ -983,8 +1154,14 @@ async function apiRequest(path, options = {}) {
 }
 
 function applyOnlineSnapshot(payload, options = {}) {
+  const oldRoom = {
+    status: state.status,
+    players: state.players,
+    chats: state.chats,
+  };
   const oldDealerId = state.currentDealerId || state.players?.find((player) => player.isDealer)?.id || "";
   const newDealerId = payload.room?.players?.find((player) => player.isDealer)?.id || "";
+  playSnapshotSounds(oldRoom, payload.room);
   state.online = true;
   state.playerId = payload.playerId || state.playerId;
   state.viewerId = state.playerId;
@@ -1139,6 +1316,18 @@ function startPolling() {
 
 async function sendAction(type) {
   try {
+    unlockSound();
+    const soundByAction = {
+      hit: "hit",
+      stand: "stand",
+      split: "deal",
+      deal_keep: "deal",
+      deal_shuffle: "deal",
+      start_round: "deal",
+      place_bet: "bet",
+      reveal_dealer: "crown",
+    };
+    playSound(soundByAction[type]);
     const payload = await apiRequest(`/api/rooms/${state.roomCode}/action`, {
       method: "POST",
       body: JSON.stringify({ playerId: state.playerId, type }),
@@ -1153,6 +1342,8 @@ async function sendChat(message) {
   const text = String(message || "").trim();
   if (!text) return;
   try {
+    unlockSound();
+    playSound("chat");
     const payload = await apiRequest(`/api/rooms/${state.roomCode}/action`, {
       method: "POST",
       body: JSON.stringify({ playerId: state.playerId, type: "chat", message: text }),
@@ -1173,6 +1364,8 @@ function selectBet(event) {
 
 async function confirmBet() {
   try {
+    unlockSound();
+    playSound("bet");
     const payload = await apiRequest(`/api/rooms/${state.roomCode}/action`, {
       method: "POST",
       body: JSON.stringify({ playerId: state.playerId, type: "place_bet", bet: state.selectedBet }),
@@ -1221,8 +1414,11 @@ els.quickChat.addEventListener("click", (event) => {
   if (!button) return;
   sendChat(button.dataset.chat);
 });
+els.soundToggleBtn.addEventListener("click", toggleSound);
+document.addEventListener("pointerdown", unlockSound, { once: true });
 
 state.deck = shuffle(createDeck());
 state.round = 0;
+renderSoundToggle();
 render();
 startRoomListPolling();
