@@ -2,7 +2,13 @@ const suits = ["♠", "♥", "♣", "♦"];
 const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const DEFAULT_API_BASE = "https://friends-21-point-api.onrender.com";
 const DEFAULT_BGM_SRC = "./assets/audio/room-bgm.m4a";
+const DEFAULT_BGM_VOLUME = 0.07;
 const nicknamePrefixes = ["无敌", "超级", "发财", "幸运", "快乐", "威猛", "闪亮", "稳赢", "豪气", "暴富", "神勇", "如意"];
+
+if (localStorage.getItem("soundDefaultV2") !== "true") {
+  localStorage.setItem("soundMuted", "false");
+  localStorage.setItem("soundDefaultV2", "true");
+}
 
 const state = {
   online: false,
@@ -33,7 +39,7 @@ const state = {
   bgmAudio: null,
   bgmUrl: DEFAULT_BGM_SRC,
   bgmPlaying: false,
-  bgmBaseVolume: 0.14,
+  bgmBaseVolume: DEFAULT_BGM_VOLUME,
   bgmDuckTimer: null,
   currentDealerId: "",
   dealerChangeId: "",
