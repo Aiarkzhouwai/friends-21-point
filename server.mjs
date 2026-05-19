@@ -195,6 +195,7 @@ function createRoom(nickname, maxPlayers = 5, rawSettings = {}) {
     used: [],
     players: [host],
     events: [`${host.nickname} 创建了房间。`],
+    chats: [],
     settlements: [],
     updatedAt: Date.now(),
   };
@@ -665,6 +666,22 @@ function publicCard(card) {
   return card ? { rank: card.rank, suit: card.suit, id: card.id } : null;
 }
 
+function sendChat(room, player, message) {
+  const text = String(message || "").trim().slice(0, 40);
+  if (!text) throw new Error("消息不能为空");
+  const chat = {
+    id: randomUUID(),
+    playerId: player.id,
+    name: player.nickname,
+    text,
+    createdAt: Date.now(),
+  };
+  room.chats.unshift(chat);
+  room.chats = room.chats.slice(0, 24);
+  room.events.unshift(`${player.nickname}：${text}`);
+  room.updatedAt = Date.now();
+}
+
 function visibleRoom(room, viewerId) {
   applyTimeouts(room);
   return {
@@ -683,6 +700,7 @@ function visibleRoom(room, viewerId) {
     deckCount: room.deck.length,
     usedCount: room.used.length,
     events: room.events.slice(0, 5),
+    chats: room.chats || [],
     settlements: room.settlements || [],
     showdownSteps: room.settlements || [],
     updatedAt: room.updatedAt,
@@ -809,6 +827,7 @@ async function handle(req, res) {
       else if (body.type === "split") split(room, player);
       else if (body.type === "deal_keep") prepareDeal(room, player, false);
       else if (body.type === "deal_shuffle") prepareDeal(room, player, true);
+      else if (body.type === "chat") sendChat(room, player, body.message);
       else if (body.type === "reveal_dealer") startDealerTurn(room);
       else throw new Error("未知操作");
       return json(res, 200, { room: visibleRoom(room, player.id), playerId: player.id });

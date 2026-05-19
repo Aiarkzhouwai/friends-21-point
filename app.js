@@ -19,6 +19,7 @@ const state = {
     showPanel: false,
     timer: null,
   },
+  seenChatIds: new Set(),
   currentDealerId: "",
   dealerChangeId: "",
   dealerChangeTimer: null,
@@ -112,6 +113,10 @@ const els = {
   settlementSheet: document.querySelector("#settlementSheet"),
   settlementEvents: document.querySelector("#settlementEvents"),
   showdownBanner: document.querySelector("#showdownBanner"),
+  danmakuLayer: document.querySelector("#danmakuLayer"),
+  chatForm: document.querySelector("#chatForm"),
+  chatInput: document.querySelector("#chatInput"),
+  quickChat: document.querySelector("#quickChat"),
 };
 
 els.apiBaseInput.value = state.apiBase;
@@ -572,6 +577,7 @@ function render(animateCards = false, flipDealer = false) {
   renderBetPanel(isViewerBetting, viewerBetConfirmed, viewerHand?.bet || 20);
   els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn, isViewerBetting, viewerBetConfirmed, isViewerDealerPrepare);
   renderShowdownBanner();
+  renderDanmaku();
   renderSettlement();
 }
 
@@ -810,6 +816,23 @@ function renderShowdownBanner() {
     <span>${step.playerHandLabel} 对 ${step.dealerHandLabel}</span>
     <em>${step.reason} · ${delta}</em>
   `;
+}
+
+function renderDanmaku() {
+  if (!els.danmakuLayer || !state.chats?.length) return;
+  state.chats
+    .slice()
+    .reverse()
+    .forEach((chat) => {
+      if (state.seenChatIds.has(chat.id)) return;
+      state.seenChatIds.add(chat.id);
+      const item = document.createElement("div");
+      item.className = "danmaku";
+      item.style.top = `${12 + Math.floor(Math.random() * 54)}%`;
+      item.textContent = `${chat.name}: ${chat.text}`;
+      els.danmakuLayer.appendChild(item);
+      window.setTimeout(() => item.remove(), 6500);
+    });
 }
 
 function getRoundLabel() {
@@ -1126,6 +1149,21 @@ async function sendAction(type) {
   }
 }
 
+async function sendChat(message) {
+  const text = String(message || "").trim();
+  if (!text) return;
+  try {
+    const payload = await apiRequest(`/api/rooms/${state.roomCode}/action`, {
+      method: "POST",
+      body: JSON.stringify({ playerId: state.playerId, type: "chat", message: text }),
+    });
+    els.chatInput.value = "";
+    applyOnlineSnapshot(payload, { animate: false });
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
 function selectBet(event) {
   const button = event.target.closest("button[data-bet]");
   if (!button) return;
@@ -1174,6 +1212,15 @@ els.copyRoomBtn.addEventListener("click", copyRoomCode);
 els.nextRoundBtn.addEventListener("click", resetRound);
 els.betOptions.addEventListener("click", selectBet);
 els.confirmBetBtn.addEventListener("click", confirmBet);
+els.chatForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  sendChat(els.chatInput.value);
+});
+els.quickChat.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-chat]");
+  if (!button) return;
+  sendChat(button.dataset.chat);
+});
 
 state.deck = shuffle(createDeck());
 state.round = 0;

@@ -180,6 +180,7 @@
 
           <div id="dealerArea"></div>
           <div id="playersGrid"></div>
+          <div class="danmaku-layer" id="danmakuLayer" aria-live="polite"></div>
           <div class="showdown-banner" id="showdownBanner" aria-live="polite"></div>
         </section>
 
@@ -206,6 +207,18 @@
             <button class="primary" id="hitBtn" type="button">要！</button>
             <button class="warning" id="splitBtn" type="button">分牌</button>
             <button class="success" id="revealBtn" type="button">亮庄家牌</button>
+          </div>
+          <div class="chat-panel">
+            <div class="quick-chat" id="quickChat">
+              <button type="button" data-chat="就这？">就这？</button>
+              <button type="button" data-chat="别演了">别演了</button>
+              <button type="button" data-chat="发我好牌">发我好牌</button>
+              <button type="button" data-chat="庄家要爆！">庄家要爆！</button>
+            </div>
+            <form class="chat-form" id="chatForm">
+              <input id="chatInput" maxlength="40" placeholder="喷两句垃圾话..." autocomplete="off" />
+              <button class="ghost compact" type="submit">发送</button>
+            </form>
           </div>
         </div>
 
