@@ -23,6 +23,7 @@ const state = {
   cinematicQueue: [],
   cinematicActive: null,
   cinematicTimer: null,
+  dismissedDissolveKey: "",
   seenChatIds: new Set(),
   heardChatIds: new Set(),
   seenCinematicIds: new Set(),
@@ -32,6 +33,8 @@ const state = {
   bgmAudio: null,
   bgmUrl: DEFAULT_BGM_SRC,
   bgmPlaying: false,
+  bgmBaseVolume: 0.14,
+  bgmDuckTimer: null,
   currentDealerId: "",
   dealerChangeId: "",
   dealerChangeTimer: null,
@@ -89,6 +92,7 @@ const els = {
   latestEvent: document.querySelector("#latestEvent"),
   toast: document.querySelector("#toast"),
   cinematicOverlay: document.querySelector("#cinematicOverlay"),
+  roomModal: document.querySelector("#roomModal"),
   entryStatus: document.querySelector("#entryStatus"),
   dealBtn: document.querySelector("#dealBtn"),
   dissolveRoomBtn: document.querySelector("#dissolveRoomBtn"),
@@ -423,6 +427,7 @@ function playSound(type) {
   if (state.soundMuted || !state.soundUnlocked) return;
   const context = ensureAudioContext();
   if (!context) return;
+  duckBgm(900);
   const now = context.currentTime + 0.01;
   const quiet = 0.045;
   const sounds = {
@@ -461,6 +466,7 @@ function playSound(type) {
 
 function speakPhrase(text) {
   if (state.soundMuted || !state.soundUnlocked || !("speechSynthesis" in window)) return;
+  duckBgm(1500);
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "zh-CN";
@@ -468,6 +474,16 @@ function speakPhrase(text) {
   utterance.pitch = 1.02;
   utterance.volume = 0.52;
   window.speechSynthesis.speak(utterance);
+}
+
+function duckBgm(duration = 1000) {
+  const audio = state.bgmAudio;
+  if (!state.bgmPlaying || !audio) return;
+  audio.volume = Math.min(audio.volume, state.bgmBaseVolume * 0.32);
+  window.clearTimeout(state.bgmDuckTimer);
+  state.bgmDuckTimer = window.setTimeout(() => {
+    if (state.bgmPlaying && state.bgmAudio) state.bgmAudio.volume = state.bgmBaseVolume;
+  }, duration);
 }
 
 function cinematicVoice(kind) {
@@ -853,6 +869,7 @@ function render(animateCards = false, flipDealer = false) {
   renderBetPanel(isViewerBetting, viewerBetConfirmed, viewerHand?.bet || 20);
   els.actionHint.textContent = getActionHint(isViewerTurn, isViewerDealerTurn, isViewerBetting, viewerBetConfirmed, isViewerDealerPrepare);
   renderDissolveControls(viewer);
+  renderRoomModal(viewer);
   renderShowdownBanner();
   renderDanmaku();
   renderSettlement();
@@ -933,6 +950,59 @@ function renderDissolveControls(viewer) {
     button.disabled = state.gameOverReason === "房间已解散" || Boolean(state.dissolveVote?.votes?.includes(viewer?.id));
     button.textContent = label || "发起解散房间";
   });
+}
+
+function isDissolvedRoom() {
+  return state.gameOverReason === "房间已解散";
+}
+
+function finalScoreRows() {
+  return [...(state.players || [])]
+    .sort((a, b) => b.chips - a.chips)
+    .map((player, index) => `
+      <li>
+        <span>${index + 1}. ${player.id === state.viewerId ? "你" : player.name}${player.isDealer ? " · 庄" : ""}</span>
+        <strong>${formatChips(player.chips)}</strong>
+      </li>
+    `)
+    .join("");
+}
+
+function renderRoomModal(viewer) {
+  if (!els.roomModal) return;
+  let html = "";
+  const vote = state.dissolveVote;
+
+  if (state.gameOverReason) {
+    const dissolved = isDissolvedRoom();
+    html = `
+      <div class="room-modal-card ${dissolved ? "danger" : ""}">
+        <span class="eyebrow">${dissolved ? "房间已解散" : "本场结束"}</span>
+        <h2>${dissolved ? "解散投票已通过" : state.gameOverReason}</h2>
+        ${dissolved ? "<p>本房间已经关闭，可以回到大厅重新创建或加入房间。</p>" : `<ul class="final-score-list">${finalScoreRows()}</ul>`}
+        <button class="primary large" id="modalReturnHomeBtn" type="button">返回大厅</button>
+      </div>
+    `;
+  } else if (vote?.active) {
+    const voteKey = `${vote.initiatorId}-${vote.voteCount}`;
+    const voted = vote.votes?.includes(viewer?.id);
+    if (voted || state.dismissedDissolveKey !== voteKey) {
+      html = `
+        <div class="room-modal-card danger">
+          <span class="eyebrow">解散投票</span>
+          <h2>有人发起了解散房间</h2>
+          <p>当前 ${vote.voteCount}/${vote.threshold} 人同意，过半后房间会关闭。</p>
+          <div class="modal-actions">
+            <button class="danger" id="modalDissolveAgreeBtn" type="button" ${voted ? "disabled" : ""}>${voted ? "已同意" : "同意解散"}</button>
+            <button class="ghost" id="modalDissolveCloseBtn" type="button" data-vote-key="${voteKey}">先不管</button>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  els.roomModal.innerHTML = html;
+  els.roomModal.classList.toggle("show", Boolean(html));
 }
 
 function renderRuleStrip() {
@@ -1426,6 +1496,10 @@ function leaveRoom() {
   window.clearInterval(state.pollTimer);
   state.online = false;
   state.uiMode = "entry";
+  state.roomCode = "";
+  state.playerId = "";
+  localStorage.removeItem("roomCode");
+  localStorage.removeItem("playerId");
   setMode("entry");
   render();
   startRoomListPolling();
@@ -1490,7 +1564,7 @@ function ensureBgmAudio() {
   if (state.bgmAudio) return state.bgmAudio;
   state.bgmAudio = new Audio(state.bgmUrl || DEFAULT_BGM_SRC);
   state.bgmAudio.loop = true;
-  state.bgmAudio.volume = 0.14;
+  state.bgmAudio.volume = state.bgmBaseVolume;
   return state.bgmAudio;
 }
 
@@ -1530,7 +1604,7 @@ function loadBgmFile(event) {
   state.bgmUrl = URL.createObjectURL(file);
   const audio = ensureBgmAudio();
   audio.src = state.bgmUrl;
-  audio.volume = 0.14;
+  audio.volume = state.bgmBaseVolume;
   audio.play()
     .then(() => {
       state.bgmPlaying = true;
@@ -1625,6 +1699,21 @@ els.bgmBtn.addEventListener("click", toggleBgm);
 els.bgmInput.addEventListener("change", loadBgmFile);
 els.dissolveRoomBtn.addEventListener("click", voteDissolveRoom);
 els.dissolveRoomTableBtn.addEventListener("click", voteDissolveRoom);
+els.roomModal.addEventListener("click", (event) => {
+  if (event.target.closest("#modalReturnHomeBtn")) {
+    leaveRoom();
+    return;
+  }
+  if (event.target.closest("#modalDissolveAgreeBtn")) {
+    voteDissolveRoom();
+    return;
+  }
+  const close = event.target.closest("#modalDissolveCloseBtn");
+  if (close) {
+    state.dismissedDissolveKey = close.dataset.voteKey || "";
+    render(false);
+  }
+});
 document.addEventListener("pointerdown", unlockSound, { once: true });
 
 state.deck = shuffle(createDeck());
