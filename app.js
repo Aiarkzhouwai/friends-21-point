@@ -798,6 +798,7 @@ function render(animateCards = false, flipDealer = false) {
   if (state.uiMode === "entry") {
     els.entryStatus.textContent = state.apiBase ? "在线服务已连接" : "请先设置后端地址";
     els.continueRoomBtn.hidden = !(state.roomCode && state.playerId);
+    clearRoomModal();
     renderRoomList();
     return;
   }
@@ -1009,6 +1010,12 @@ function renderRoomModal(viewer) {
 
   els.roomModal.innerHTML = html;
   els.roomModal.classList.toggle("show", Boolean(html));
+}
+
+function clearRoomModal() {
+  if (!els.roomModal) return;
+  els.roomModal.innerHTML = "";
+  els.roomModal.classList.remove("show");
 }
 
 function renderRuleStrip() {
@@ -1500,12 +1507,22 @@ async function continueOnlineRoom() {
 
 function leaveRoom() {
   window.clearInterval(state.pollTimer);
+  window.clearTimeout(state.showdown.timer);
+  window.clearTimeout(state.cinematicTimer);
   state.online = false;
   state.uiMode = "entry";
   state.roomCode = "";
   state.playerId = "";
+  state.showdown = { key: "", index: 0, showPanel: false, timer: null };
+  state.cinematicQueue = [];
+  state.cinematicActive = null;
   localStorage.removeItem("roomCode");
   localStorage.removeItem("playerId");
+  clearRoomModal();
+  if (els.cinematicOverlay) {
+    els.cinematicOverlay.className = "cinematic-overlay";
+    els.cinematicOverlay.innerHTML = "";
+  }
   setMode("entry");
   render();
   startRoomListPolling();
