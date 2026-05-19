@@ -237,6 +237,13 @@ function pendingJoinersLabel() {
   return `${names} 等待下局加入`;
 }
 
+function nextDealerNotice() {
+  if (state.status !== "settlement" || !state.nextDealerId) return "";
+  const player = state.players?.find((item) => item.id === state.nextDealerId);
+  if (!player) return "";
+  return `庄家爆牌，下局 ${player.id === state.viewerId ? "你" : player.name} 坐庄`;
+}
+
 function gameCountdownLabel() {
   const minutes = Number(state.settings?.timeLimitMinutes || 0);
   if (!minutes || !state.startedAt) return "";
@@ -519,15 +526,16 @@ function render(animateCards = false, flipDealer = false) {
   const canSplit = Boolean(viewerHand?.canSplit);
   const left = timeLeftLabel();
   const pendingLabel = pendingJoinersLabel();
+  const dealerNotice = nextDealerNotice();
   els.deckCount.textContent = `牌库 ${state.deckCount ?? state.deck.length}`;
   els.discardCount.textContent = `已用 ${state.usedCount ?? state.used.length}`;
-  els.latestEvent.textContent = pendingLabel || state.logs?.[0] || "等待玩家操作";
+  els.latestEvent.textContent = dealerNotice || pendingLabel || state.logs?.[0] || "等待玩家操作";
   const countdown = gameCountdownLabel();
   els.roundLabel.textContent = `第 ${state.round} 局 · ${getRoundLabel()}${countdown ? ` · 剩 ${countdown}` : ""}`;
   const handLabel = activeHandLabel();
   els.turnLabel.textContent = state.status === "settlement"
     ? state.showdown.showPanel
-      ? "本局结算完成"
+      ? dealerNotice || "本局结算完成"
       : "逐家比牌中"
     : state.status === "betting"
     ? `等待闲家下注${left ? ` · ${left}` : ""}`
@@ -708,7 +716,8 @@ function getActionHint(isViewerTurn, isViewerDealerTurn = false, isViewerBetting
   const hand = activeHandLabel();
   const handText = hand ? `正在操作${hand} · ` : "";
   const pending = pendingJoinersLabel();
-  if (state.status === "settlement") return state.gameOverReason || "本局已结算";
+  const dealerNotice = nextDealerNotice();
+  if (state.status === "settlement") return state.gameOverReason || dealerNotice || "本局已结算";
   if (isViewerBetting) return viewerBetConfirmed ? `已确认下注，等待其他闲家${timer}` : `请选择本局下注${timer}，超时自动下注`;
   if (state.status === "betting") return `${pending ? `${pending} · ` : ""}等待闲家下注${timer}`;
   if (isViewerDealerPrepare) return "下注完成：你可以洗牌后发牌，或沿用当前牌库直接发牌";
@@ -740,6 +749,15 @@ function renderSettlement() {
       </article>
     `;
   });
+  const dealerNotice = nextDealerNotice();
+  if (dealerNotice) {
+    rows.unshift(`
+      <article class="dealer-switch-panel">
+        <span>庄家爆牌</span>
+        <strong>${dealerNotice.replace("庄家爆牌，", "")}</strong>
+      </article>
+    `);
+  }
   if (settlements.length) {
     const dealerDelta = settlements.reduce((sum, item) => sum - item.delta, 0);
     const dealerName = settlements[0].dealerName || "庄家";
