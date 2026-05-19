@@ -20,8 +20,12 @@ const state = {
     showPanel: false,
     timer: null,
   },
+  cinematicQueue: [],
+  cinematicActive: null,
+  cinematicTimer: null,
   seenChatIds: new Set(),
   heardChatIds: new Set(),
+  seenCinematicIds: new Set(),
   soundMuted: localStorage.getItem("soundMuted") === "true",
   soundUnlocked: false,
   audioContext: null,
@@ -84,6 +88,7 @@ const els = {
   turnLabel: document.querySelector("#turnLabel"),
   latestEvent: document.querySelector("#latestEvent"),
   toast: document.querySelector("#toast"),
+  cinematicOverlay: document.querySelector("#cinematicOverlay"),
   entryStatus: document.querySelector("#entryStatus"),
   dealBtn: document.querySelector("#dealBtn"),
   dissolveRoomBtn: document.querySelector("#dissolveRoomBtn"),
@@ -465,9 +470,10 @@ function speakPhrase(text) {
   window.speechSynthesis.speak(utterance);
 }
 
-function specialVoice(rankLevel) {
-  if (rankLevel === 3) return "五小牛";
-  if (rankLevel === 1) return "二十一点";
+function cinematicVoice(kind) {
+  if (kind === "five") return "五小牛";
+  if (kind === "twenty-one") return "二十一点";
+  if (kind === "bust") return "爆了";
   return "";
 }
 
@@ -495,46 +501,11 @@ function totalCards(room) {
   );
 }
 
-function handSoundKey(player, hand, index) {
-  return `${player.id}:${index}:${hand.cards?.map((card) => card.id || `${card.rank}${card.suit}`).join("|") || ""}`;
-}
-
-function roomHandStates(room) {
-  const map = new Map();
-  (room?.players || []).forEach((player) => {
-    (player.hands || []).forEach((hand, index) => {
-      map.set(`${player.id}:${index}`, {
-        busted: Boolean(hand.busted) || isBust(hand.cards || []),
-        rank: handRank(hand.cards || []).level,
-        key: handSoundKey(player, hand, index),
-      });
-    });
-  });
-  return map;
-}
-
 function playSnapshotSounds(oldRoom, newRoom) {
   if (!oldRoom || !newRoom) return;
   const oldCards = totalCards(oldRoom);
   const newCards = totalCards(newRoom);
   if (newCards > oldCards) playSound(newCards - oldCards > 1 ? "deal" : "hit");
-
-  const oldHands = roomHandStates(oldRoom);
-  const newHands = roomHandStates(newRoom);
-  let heardSpecial = false;
-  let heardBust = false;
-  newHands.forEach((handState, key) => {
-    const oldHand = oldHands.get(key);
-    if (!oldHand || oldHand.key === handState.key) return;
-    if (!oldHand.busted && handState.busted) heardBust = true;
-    if (!heardSpecial && handState.rank > 0 && oldHand.rank !== handState.rank) {
-      heardSpecial = true;
-      const phrase = specialVoice(handState.rank);
-      if (phrase) speakPhrase(phrase);
-    }
-  });
-  if (heardBust) playSound("bust");
-  else if (heardSpecial) playSound("special");
 
   const oldStatus = oldRoom.status;
   const newStatus = newRoom.status;
@@ -551,6 +522,108 @@ function playSnapshotSounds(oldRoom, newRoom) {
     const fromSelf = chat.playerId === state.playerId;
     if (!fromSelf) playSound("chat");
   });
+}
+
+function enqueueCinematics(cinematics = []) {
+  const incoming = cinematics
+    .slice()
+    .reverse()
+    .filter((event) => event?.id && !state.seenCinematicIds.has(event.id));
+  if (!incoming.length) return;
+  incoming.forEach((event) => {
+    state.seenCinematicIds.add(event.id);
+    if (event.round === state.round) state.cinematicQueue.push(event);
+  });
+  state.cinematicQueue = state.cinematicQueue.slice(-3);
+  playNextCinematic();
+}
+
+function cowHtml(index) {
+  return `
+    <div class="cinematic-cow" style="--cow:${index}">
+      <div class="cinematic-cow-body"></div>
+      <div class="cinematic-cow-head">
+        <i class="cinematic-horn left"></i>
+        <i class="cinematic-horn right"></i>
+        <i class="cinematic-hair"></i>
+        <i class="cinematic-hair"></i>
+        <i class="cinematic-hair"></i>
+        <i class="cinematic-forehead"></i>
+        <i class="cinematic-eye left"></i>
+        <i class="cinematic-eye right"></i>
+        <i class="cinematic-snout"></i>
+        <i class="cinematic-mouth"></i>
+        <i class="cinematic-tooth left"></i>
+        <i class="cinematic-tooth right"></i>
+      </div>
+    </div>
+  `;
+}
+
+function sparkHtml(count = 24) {
+  return Array.from({ length: count }, (_, index) => {
+    const angle = (Math.PI * 2 * index) / count;
+    const distance = 110 + Math.random() * 190;
+    const x = Math.cos(angle) * distance;
+    const y = Math.sin(angle) * distance;
+    const left = 45 + Math.random() * 10;
+    const top = 44 + Math.random() * 12;
+    return `<i class="cinematic-spark" style="left:${left}%;top:${top}%;--x:${x}px;--y:${y}px"></i>`;
+  }).join("");
+}
+
+function renderCinematicScene(event) {
+  if (event.kind === "five") {
+    return `
+      <div class="cinematic-burst-lines"></div>
+      ${sparkHtml(34)}
+      <div class="cinematic-card">
+        <div class="cinematic-cow-pack">${[1, 2, 3, 4, 5].map(cowHtml).join("")}</div>
+        <h2 class="cinematic-title">五小牛！</h2>
+      </div>
+    `;
+  }
+  if (event.kind === "twenty-one") {
+    return `
+      <div class="cinematic-burst-lines"></div>
+      <i class="cinematic-slash"></i>
+      ${sparkHtml(18)}
+      <div class="cinematic-card">
+        <h2 class="cinematic-title">21点！</h2>
+      </div>
+    `;
+  }
+  return `
+    <div class="cinematic-burst-lines"></div>
+    <i class="cinematic-cracked-card"></i>
+    ${sparkHtml(16)}
+    <div class="cinematic-card">
+      <h2 class="cinematic-title">爆了！</h2>
+    </div>
+  `;
+}
+
+function playNextCinematic() {
+  if (state.cinematicActive || !state.cinematicQueue.length || !els.cinematicOverlay) return;
+  const event = state.cinematicQueue.shift();
+  state.cinematicActive = event;
+  const kindClass = event.kind === "twenty-one" ? "twenty-one" : event.kind;
+  els.cinematicOverlay.className = `cinematic-overlay show ${kindClass}`;
+  els.cinematicOverlay.innerHTML = renderCinematicScene(event);
+  const sound = event.kind === "five" || event.kind === "twenty-one" ? "special" : "bust";
+  playSound(sound);
+  speakPhrase(cinematicVoice(event.kind));
+  const duration = event.kind === "five" ? 2300 : 1700;
+  window.clearTimeout(state.cinematicTimer);
+  state.cinematicTimer = window.setTimeout(() => {
+    els.cinematicOverlay.classList.add("out");
+    window.setTimeout(() => {
+      els.cinematicOverlay.className = "cinematic-overlay";
+      els.cinematicOverlay.innerHTML = "";
+      state.cinematicActive = null;
+      playNextCinematic();
+    }, 280);
+  }, duration);
 }
 
 function hit() {
@@ -1209,6 +1282,7 @@ async function apiRequest(path, options = {}) {
 }
 
 function applyOnlineSnapshot(payload, options = {}) {
+  const wasOnline = state.online;
   const oldRoom = {
     status: state.status,
     players: state.players,
@@ -1227,6 +1301,11 @@ function applyOnlineSnapshot(payload, options = {}) {
   localStorage.setItem("playerId", state.playerId);
   Object.assign(state, payload.room);
   state.viewerId = state.playerId;
+  if (wasOnline) {
+    enqueueCinematics(payload.room?.cinematics || []);
+  } else {
+    (payload.room?.cinematics || []).forEach((event) => state.seenCinematicIds.add(event.id));
+  }
   if (oldDealerId && newDealerId && oldDealerId !== newDealerId) {
     state.dealerChangeId = newDealerId;
     window.clearTimeout(state.dealerChangeTimer);

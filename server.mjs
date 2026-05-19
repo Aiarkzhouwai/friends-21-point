@@ -116,6 +116,32 @@ function handLabel(cards) {
   return `${handScore(cards)} 点`;
 }
 
+function cinematicKind(cards) {
+  if (isBust(cards)) return "bust";
+  const score = handScore(cards);
+  if (cards.length >= 5 && score <= 21) return "five";
+  if (score === 21 && cards.length >= 2 && cards.length <= 4) return "twenty-one";
+  return "";
+}
+
+function addCinematic(room, player, handIndex) {
+  const hand = player?.hands?.[handIndex];
+  if (!hand) return;
+  const kind = cinematicKind(hand.cards);
+  if (!kind) return;
+  room.cinematics.unshift({
+    id: randomUUID(),
+    kind,
+    playerId: player.id,
+    playerName: player.nickname,
+    handIndex,
+    isDealer: Boolean(player.isDealer),
+    round: room.round,
+    createdAt: Date.now(),
+  });
+  room.cinematics = room.cinematics.slice(0, 12);
+}
+
 function isBust(cards) {
   return handScore(cards) > 21;
 }
@@ -197,6 +223,7 @@ function createRoom(nickname, maxPlayers = 5, rawSettings = {}) {
     events: [`${host.nickname} 创建了房间。`],
     chats: [],
     dissolveVote: null,
+    cinematics: [],
     settlements: [],
     updatedAt: Date.now(),
   };
@@ -455,6 +482,14 @@ function dealerHit(room, player) {
     hand.busted = true;
     hand.stood = true;
     room.events.unshift("庄家爆牌。");
+    addCinematic(room, house, room.currentHandIndex);
+    advanceDealerTurn(room);
+    return;
+  }
+  if (cinematicKind(hand.cards)) {
+    hand.stood = true;
+    addCinematic(room, house, room.currentHandIndex);
+    room.events.unshift(`庄家第 ${room.currentHandIndex + 1} 手 ${handLabel(hand.cards)}。`);
     advanceDealerTurn(room);
     return;
   }
@@ -469,6 +504,7 @@ function dealerStand(room, player) {
   const hand = activeHand(house, room);
   if (handScore(hand.cards) <= 13) throw new Error("小于等于 13 必须要牌");
   hand.stood = true;
+  addCinematic(room, house, room.currentHandIndex);
   room.events.unshift(`庄家第 ${room.currentHandIndex + 1} 手 ${handScore(hand.cards)} 点停牌。`);
   advanceDealerTurn(room);
 }
@@ -593,6 +629,12 @@ function hit(room, player) {
     hand.busted = true;
     hand.stood = true;
     room.events.unshift(`${player.nickname} 爆牌。`);
+    addCinematic(room, player, room.currentHandIndex);
+    advancePlayerTurn(room);
+  } else if (cinematicKind(hand.cards)) {
+    hand.stood = true;
+    addCinematic(room, player, room.currentHandIndex);
+    room.events.unshift(`${player.nickname} 第 ${room.currentHandIndex + 1} 手 ${handLabel(hand.cards)}。`);
     advancePlayerTurn(room);
   } else {
     setTurnDeadline(room);
@@ -610,6 +652,7 @@ function stand(room, player) {
   const hand = activeHand(player, room);
   if (handScore(hand.cards) <= 13) throw new Error("小于等于 13 必须要牌");
   hand.stood = true;
+  addCinematic(room, player, room.currentHandIndex);
   room.events.unshift(`${player.nickname} 第 ${room.currentHandIndex + 1} 手停牌。`);
   advancePlayerTurn(room);
   room.updatedAt = Date.now();
@@ -643,9 +686,15 @@ function timeoutAct(room) {
   if (isBust(hand.cards)) {
     hand.busted = true;
     hand.stood = true;
+    addCinematic(room, player, room.currentHandIndex);
     room.events.unshift(`${player.nickname} 超时自动要牌后爆牌。`);
+  } else if (cinematicKind(hand.cards)) {
+    hand.stood = true;
+    addCinematic(room, player, room.currentHandIndex);
+    room.events.unshift(`${player.nickname} 超时后形成 ${handLabel(hand.cards)}。`);
   } else {
     hand.stood = true;
+    addCinematic(room, player, room.currentHandIndex);
     room.events.unshift(`${player.nickname} 超时，系统自动不要了。`);
   }
   if (room.status === "dealer_turn") advanceDealerTurn(room);
@@ -756,6 +805,7 @@ function visibleRoom(room, viewerId) {
     events: room.events.slice(0, 5),
     chats: room.chats || [],
     dissolveVote: visibleDissolveVote(room),
+    cinematics: room.cinematics || [],
     settlements: room.settlements || [],
     showdownSteps: room.settlements || [],
     updatedAt: room.updatedAt,
