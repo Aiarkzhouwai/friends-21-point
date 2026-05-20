@@ -931,6 +931,9 @@ async function handle(req, res) {
       const room = rooms.get(joinMatch[1]);
       if (!room) throw new Error("房间不存在");
       applyTimeouts(room);
+      if (room.gameOverReason || room.status === "closed") {
+        throw new Error(room.gameOverReason || "房间已关闭");
+      }
       const body = await readBody(req);
       const existing = existingRoomPlayer(room, body.playerId);
       if (existing) {

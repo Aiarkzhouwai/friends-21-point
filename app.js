@@ -159,6 +159,24 @@ function renderRecentRoomButton() {
 
 renderRecentRoomButton();
 
+function clearRecentRoom(message = "") {
+  state.roomCode = "";
+  state.playerId = "";
+  state.online = false;
+  localStorage.removeItem("roomCode");
+  localStorage.removeItem("playerId");
+  els.roomCodeInput.value = "";
+  renderRecentRoomButton();
+  if (message) showToast(message);
+}
+
+function endedRoomReason(room) {
+  if (!room) return "";
+  if (room.gameOverReason) return room.gameOverReason;
+  if (room.status === "closed") return "房间已关闭";
+  return "";
+}
+
 function randomItem(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
@@ -1474,6 +1492,11 @@ async function joinOnlineRoom(codeOverride = "") {
     els.roomCodeInput.value = code;
 
     if (state.playerId && state.roomCode === code) {
+      const canContinue = await validateRecentRoom({ silent: false });
+      if (!canContinue) {
+        render();
+        return;
+      }
       state.online = true;
       await syncOnlineRoom();
       showToast(`已回到房间 ${code}`);
@@ -1497,6 +1520,7 @@ async function loadRoomList() {
   try {
     const data = await apiRequest("/api/rooms");
     state.roomList = data.rooms || [];
+    validateRecentRoom({ silent: true });
     renderRoomList();
   } catch (error) {
     if (els.roomList) els.roomList.innerHTML = `<p>暂时拉不到房间列表：${error.message}</p>`;
@@ -1538,8 +1562,29 @@ async function syncOnlineRoom() {
   }
 }
 
+async function validateRecentRoom({ silent = false } = {}) {
+  if (!state.roomCode || !state.playerId) return false;
+  try {
+    const payload = await apiRequest(`/api/rooms/${state.roomCode}?playerId=${encodeURIComponent(state.playerId)}`);
+    const reason = endedRoomReason(payload.room);
+    if (reason) {
+      clearRecentRoom(silent ? "" : `${reason}，已清除上次房间`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    clearRecentRoom(silent ? "" : `上次房间不可用，已清除`);
+    return false;
+  }
+}
+
 async function continueOnlineRoom() {
   if (!state.roomCode || !state.playerId) return;
+  const canContinue = await validateRecentRoom({ silent: false });
+  if (!canContinue) {
+    render();
+    return;
+  }
   state.online = true;
   await syncOnlineRoom();
 }
